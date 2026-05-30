@@ -1,0 +1,30 @@
+[package]
+name = "markplus_core"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+# rlib is for native Tauri compilation; cdylib forces the Wasm output option
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+pulldown-cmark = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+typwriter = { version = "=0.14.27", optional = true, features = ["compile"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+serde_yml = "0.0.12"
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+
+[[bin]]
+name = "mpc"
+path = "src/main.rs"
+
+[features]
+pdf = ["dep:typwriter"]

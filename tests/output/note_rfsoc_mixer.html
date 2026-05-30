@@ -1,0 +1,106 @@
+<h1>RFSoC Mixer Design Notes</h1>
+<p>Overview of the RF System-on-Chip mixer block used in the high-frequency optical
+front-end. This document covers signal chain topology, filter specifications, and
+simulation harness configuration.</p>
+<hr />
+<h2>Signal Chain Topology</h2>
+<p>The full signal path from antenna input to optical modulator output consists of
+three sequential processing stages:</p>
+<div class="markplus-plugin" data-plugin="simby" data-raw="[Antenna Input] ──► [LNA Block] ──► [RFSoC Mixer] ──► [IF Filter] ──► [Optical Modulator]"></div>
+<p>Key design constraints:</p>
+<li>< 3 dB across the full 2–18 GHz sweep band</li>
+<li>+12 dB nominal at 10 GHz centre frequency</li>
+<li>> +25 dBm to handle adjacent channel interferers</li>
+<li>< −60 dBc at the RF port</li>
+<hr />
+<h2>Filter Block Specifications</h2>
+<p>The IF filter following the mixer is a 7th-order Chebyshev bandpass design.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Min</th>
+<th>Nominal</th>
+<th>Max</th>
+<th>Unit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Centre frequency</td>
+<td>990</td>
+<td>1000</td>
+<td>1010</td>
+<td>MHz</td>
+</tr>
+<tr>
+<td>3 dB bandwidth</td>
+<td>48</td>
+<td>50</td>
+<td>52</td>
+<td>MHz</td>
+</tr>
+<tr>
+<td>Passband ripple</td>
+<td>—</td>
+<td>0.1</td>
+<td>0.5</td>
+<td>dB</td>
+</tr>
+<tr>
+<td>Stopband rejection</td>
+<td>45</td>
+<td>—</td>
+<td>—</td>
+<td>dB</td>
+</tr>
+<tr>
+<td>Group delay var.</td>
+<td>—</td>
+<td>—</td>
+<td>2.5</td>
+<td>ns</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Workspace Layout</h2>
+<p>Interactive workspace canvas for the signal chain inspector tool:</p>
+<pre><code class="language-a2ui">{
+  &quot;view&quot;: &quot;signal-chain&quot;,
+  &quot;blocks&quot;: [
+    { &quot;id&quot;: &quot;lna&quot;,      &quot;label&quot;: &quot;LNA&quot;,             &quot;gain_db&quot;: 14 },
+    { &quot;id&quot;: &quot;mixer&quot;,    &quot;label&quot;: &quot;RFSoC Mixer&quot;,      &quot;lo_freq_ghz&quot;: 9 },
+    { &quot;id&quot;: &quot;if_filt&quot;,  &quot;label&quot;: &quot;IF Filter&quot;,        &quot;bw_mhz&quot;: 50 },
+    { &quot;id&quot;: &quot;opt_mod&quot;,  &quot;label&quot;: &quot;Optical Modulator&quot;,&quot;vpi_v&quot;: 3.5 }
+  ],
+  &quot;connections&quot;: [&quot;lna-&gt;mixer&quot;, &quot;mixer-&gt;if_filt&quot;, &quot;if_filt-&gt;opt_mod&quot;]
+}</code></pre>
+<hr />
+<h2>HDL Simulation Snippet</h2>
+<p>Reference testbench excerpt for the mixer block functional verification:</p>
+<pre><code class="language-vhdl">-- RFSoC Mixer Testbench (excerpt)
+signal rf_in  : std_logic_vector(11 downto 0);
+signal lo_clk : std_logic := &#39;0&#39;;
+signal if_out : std_logic_vector(11 downto 0);
+
+lo_clk &lt;= not lo_clk after 55.5 ps;  -- 9 GHz LO
+
+uut: entity work.rfsoc_mixer
+    port map (
+        rf_in  =&gt; rf_in,
+        lo_clk =&gt; lo_clk,
+        if_out =&gt; if_out
+    );</code></pre>
+<hr />
+<h2>Known Issues</h2>
+<li>— the mixer exhibits a transient LO leakage
+spike of ~−40 dBc for the first 500 µs after power-on. Mitigation: hold RF
+path in blanking state during the warm-up window.</li>
+<li>— resolved in revision 2 via balanced topology.</li>
+<li>.</li>
+<hr />
+<h2>References</h2>
+<li></li>
+<li>, 4th ed., Wiley, 2012.</li>
+<li>Internal design review slides: doc/reviews/rfsoc_mixer_rev3_review.pdf</li>
