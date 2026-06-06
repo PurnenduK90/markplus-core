@@ -12,8 +12,7 @@ repository = "https://github.com/PurnenduK90/markplus-core"
 exclude = [
     ".github/",
     "tests/samples/*.pdf",
-    "tests/samples/*.typ",
-    "docs/"
+    "tests/samples/*.typ"
 ]
 keywords = ["markdown", "ast", "parser", "wasm", "json"]
 categories = ["text-processing", "parsing", "wasm"]
