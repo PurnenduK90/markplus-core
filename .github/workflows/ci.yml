@@ -68,7 +68,7 @@ jobs:
 
       - name: Validate sample AST against JSON Schema
         run: |
-          cargo run --release --bin mpc -- tests/samples/note_rfsoc_mixer.md \
+          cargo run --release --bin mpc -- tests/samples/md_api_reference_sample.md \
             | python - << 'EOF'
           import sys, json
           from jsonschema import validate, ValidationError
