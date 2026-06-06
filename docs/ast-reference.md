@@ -624,7 +624,7 @@ The `SiteAsset` produced by `parse_document()` and serialised to `note.json`:
 
 ```json
 {
-  "schema": 2,
+  "schema": 1,
   "meta": {
     "title": "RFSoC Mixer Design Notes",
     "category": "hardware",

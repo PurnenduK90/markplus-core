@@ -289,7 +289,7 @@ Every `SiteAsset` carries a `schema` field:
 ```
 
 Renderers should reject or degrade gracefully when `schema` does not match
-the version they were built against. Current version: **2**.
+the version they were built against. Current version: **1**.
 
 Breaking changes that bump the schema version:
 - Renaming any node's `t` field value
