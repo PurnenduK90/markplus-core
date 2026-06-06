@@ -93,6 +93,15 @@ fn sample_release_notes_validates() {
     assert_valid(&schema, &value, "md_release_notes_sample.md");
 }
 
+/// `md_edge_cases_sample.md` — tests horizontal rules, HTML blocks, task lists, and definition lists.
+#[test]
+fn sample_edge_cases_validates() {
+    let schema = load_schema();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/md_edge_cases_sample.md");
+    let value = parse_to_value(&path);
+    assert_valid(&schema, &value, "md_edge_cases_sample.md");
+}
+
 /// `md_sample_file_200KB.md` — large file stress test.
 #[test]
 fn sample_200kb_validates() {

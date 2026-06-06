@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,14 +17,29 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
             artifact_name: mpc
             asset_name: mpc-linux-amd64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: mpc
+            asset_name: mpc-linux-arm64
           - os: windows-latest
+            target: x86_64-pc-windows-msvc
             artifact_name: mpc.exe
             asset_name: mpc-windows-amd64.exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact_name: mpc.exe
+            asset_name: mpc-windows-arm64.exe
           - os: macos-latest
+            target: x86_64-apple-darwin
             artifact_name: mpc
             asset_name: mpc-macos-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: mpc
+            asset_name: mpc-macos-arm64
 
     steps:
       - name: Checkout repository
@@ -31,15 +47,26 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build native binary
-        run: cargo build --release
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: mv target/${{ matrix.target }}/release/${{ matrix.artifact_name }} target/${{ matrix.target }}/release/${{ matrix.asset_name }}
 
       - name: Upload native binary
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: target/release/${{ matrix.artifact_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.asset_name }}
 
   build-wasm:
     name: Build Wasm
