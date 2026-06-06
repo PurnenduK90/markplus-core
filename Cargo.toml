@@ -2,7 +2,7 @@
 name = "markplus_core"
 authors = ["Purnendu Kumar <purnendu@kumargaur.com>"]
 documentation = "https://docs.rs/markplus_core"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Universal Markdown → AST (JSON) compiler for the MarkPlus ecosystem"
