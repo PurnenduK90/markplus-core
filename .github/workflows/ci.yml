@@ -68,8 +68,7 @@ jobs:
 
       - name: Validate sample AST against JSON Schema
         run: |
-          cargo run --release --bin mpc -- tests/samples/md_api_reference_sample.md \
-            | python - << 'EOF'
+          cat << 'EOF' > validate.py
           import sys, json
           from jsonschema import validate, ValidationError
           ast = json.loads(sys.stdin.read())
@@ -83,3 +82,4 @@ jobs:
               print(f"  at path: {list(e.absolute_path)}")
               sys.exit(1)
           EOF
+          cargo run --release --bin mpc -- tests/samples/md_api_reference_sample.md | python validate.py
