@@ -1,5 +1,8 @@
 # markplus_core
 
+[![Crates.io](https://img.shields.io/crates/v/markplus_core.svg)](https://crates.io/crates/markplus_core)
+[![Docs.rs](https://docs.rs/markplus_core/badge.svg)](https://docs.rs/markplus_core)
+[![License](https://img.shields.io/crates/l/markplus_core.svg)](https://crates.io/crates/markplus_core)
 [![CI](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/PurnenduK90/markplus-core/graph/badge.svg)](https://codecov.io/gh/PurnenduK90/markplus-core)
 
