@@ -1,9 +1,22 @@
 [package]
 name = "markplus_core"
+authors = ["Purnendu Kumar <purnendu@kumargaur.com>"]
+documentation = "https://docs.rs/markplus_core"
 version = "0.2.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Universal Markdown → AST (JSON) compiler for the MarkPlus ecosystem"
+readme = "README.md"
+repository = "https://github.com/PurnenduK90/markplus-core"
+
+exclude = [
+    ".github/",
+    "tests/samples/*.pdf",
+    "tests/samples/*.typ",
+    "docs/"
+]
+keywords = ["markdown", "ast", "parser", "wasm", "json"]
+categories = ["text-processing", "parsing", "wasm"]
 
 [lib]
 crate-type = ["rlib", "cdylib"]

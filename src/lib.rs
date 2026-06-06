@@ -581,3 +581,25 @@ $$
         assert_eq!(round_trip, asset);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Documentation
+// ---------------------------------------------------------------------------
+
+/// Comprehensive guides and references.
+pub mod docs {
+    /// Full usage instructions for the CLI and API.
+    pub mod usage {
+        #![doc = include_str!("../docs/usage.md")]
+    }
+    /// Complete reference for the AST node structures.
+    pub mod ast_reference {
+        #![doc = include_str!("../docs/ast-reference.md")]
+    }
+    /// The formal JSON Schema for the MarkPlus AST.
+    pub mod schema {
+        #![doc = "```json\n"]
+        #![doc = include_str!("../schema/markplus-ast.v1.schema.json")]
+        #![doc = "\n```"]
+    }
+}

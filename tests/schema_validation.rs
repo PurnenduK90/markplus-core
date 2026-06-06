@@ -32,8 +32,7 @@ fn load_schema() -> Value {
         .join("markplus-ast.v1.schema.json");
     let raw = fs::read_to_string(&schema_path)
         .unwrap_or_else(|e| panic!("Cannot read schema at {:?}: {}", schema_path, e));
-    serde_json::from_str(&raw)
-        .unwrap_or_else(|e| panic!("Schema is not valid JSON: {}", e))
+    serde_json::from_str(&raw).unwrap_or_else(|e| panic!("Schema is not valid JSON: {}", e))
 }
 
 /// Validate a parsed `SiteAsset` JSON value against the compiled schema,
@@ -44,7 +43,10 @@ fn assert_valid(schema: &Value, asset_json: &Value, label: &str) {
 
     let mut errors = validator.iter_errors(asset_json).peekable();
     if errors.peek().is_some() {
-        println!("FAILING AST: {}", serde_json::to_string_pretty(asset_json).unwrap());
+        println!(
+            "FAILING AST: {}",
+            serde_json::to_string_pretty(asset_json).unwrap()
+        );
         let messages: Vec<String> = errors
             .map(|e| format!("  • {} (at {})", e, e.instance_path()))
             .collect();
@@ -58,10 +60,9 @@ fn assert_valid(schema: &Value, asset_json: &Value, label: &str) {
 
 /// Parse one Markdown file and return its `SiteAsset` as a `serde_json::Value`.
 fn parse_to_value(path: &Path) -> Value {
-    let raw = fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("Cannot read {:?}: {}", path, e));
-    let asset = parse_document(&raw)
-        .unwrap_or_else(|e| panic!("Parse failed for {:?}: {}", path, e));
+    let raw = fs::read_to_string(path).unwrap_or_else(|e| panic!("Cannot read {:?}: {}", path, e));
+    let asset =
+        parse_document(&raw).unwrap_or_else(|e| panic!("Parse failed for {:?}: {}", path, e));
     let json_str = asset.to_json().expect("serialisation failed");
     serde_json::from_str(&json_str).expect("round-trip JSON parse failed")
 }
@@ -75,8 +76,7 @@ fn parse_to_value(path: &Path) -> Value {
 #[test]
 fn sample_note_rfsoc_mixer_validates() {
     let schema = load_schema();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/samples/note_rfsoc_mixer.md");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/note_rfsoc_mixer.md");
     let value = parse_to_value(&path);
     assert_valid(&schema, &value, "note_rfsoc_mixer.md");
 }
@@ -86,8 +86,8 @@ fn sample_note_rfsoc_mixer_validates() {
 #[test]
 fn sample_api_reference_validates() {
     let schema = load_schema();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/samples/md_api_reference_sample.md");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/md_api_reference_sample.md");
     let value = parse_to_value(&path);
     assert_valid(&schema, &value, "md_api_reference_sample.md");
 }
@@ -97,8 +97,8 @@ fn sample_api_reference_validates() {
 #[test]
 fn sample_release_notes_validates() {
     let schema = load_schema();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/samples/md_release_notes_sample.md");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/md_release_notes_sample.md");
     let value = parse_to_value(&path);
     assert_valid(&schema, &value, "md_release_notes_sample.md");
 }
@@ -107,8 +107,7 @@ fn sample_release_notes_validates() {
 #[test]
 fn sample_200kb_validates() {
     let schema = load_schema();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/samples/md_sample_file_200KB.md");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/md_sample_file_200KB.md");
     let value = parse_to_value(&path);
     assert_valid(&schema, &value, "md_sample_file_200KB.md");
 }
