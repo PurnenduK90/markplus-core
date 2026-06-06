@@ -1,5 +1,8 @@
 # markplus_core
 
+[![CI](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/PurnenduK90/markplus-core/graph/badge.svg)](https://codecov.io/gh/PurnenduK90/markplus-core)
+
 A universal, high-performance Markdown → AST compiler written in Rust.
 
 `markplus_core` parses Markdown (with optional YAML frontmatter) into a
@@ -95,7 +98,7 @@ const site = JSON.parse(parse_document_to_json(rawMarkdown));
 
 ```json
 {
-  "schema": 2,
+  "schema": 1,
   "meta": {
     "title": "RFSoC Mixer Design Notes",
     "tags": ["rfsoc", "dsp"],
