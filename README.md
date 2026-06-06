@@ -1,153 +1,154 @@
-# MarkPlus Core
+# markplus_core
 
-MarkPlus Core is a Markdown to HTML / Typst / JSON compiler. It acts as the underlying engine for parsing Markdown (with frontmatter), compiling it to a JSON intermediate representation, and rendering it to various targets like HTML and Typst.
+[![Crates.io](https://img.shields.io/crates/v/markplus_core.svg)](https://crates.io/crates/markplus_core)
+[![Docs.rs](https://docs.rs/markplus_core/badge.svg)](https://docs.rs/markplus_core)
+[![License](https://img.shields.io/crates/l/markplus_core.svg)](https://crates.io/crates/markplus_core)
+[![CI](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/PurnenduK90/markplus-core/graph/badge.svg)](https://codecov.io/gh/PurnenduK90/markplus-core)
 
-## CLI Documentation
+A universal, high-performance Markdown → AST compiler written in Rust.
 
-The `mpc` CLI provides commands to compile and preview Markdown files.
-
-### Building
-
-To build the standard `mpc` CLI without native PDF generation:
-```bash
-cargo build --release
-```
-
-To build a single `mpc` binary with native PDF compilation enabled (bundles the Typst compiler):
-```bash
-cargo build --release --features pdf
-```
-
-### `compile`
-Full deploy-pass compile. It writes output files based on the requested target:
-You can pass `--target site`, `--target html`, `--target typst`, or `--target pdf`.
-
-```bash
-mpc compile <FILE> [--target <html|typst|pdf|site>] [--out-dir <DIR>]
-```
-- `<FILE>`: Source markdown file (may contain frontmatter).
-- `--target`: 
-  - `site` (default): writes the compiled JSON asset (`<stem>.json`) and stripped markdown (`<stem>.md`).
-  - `html`: writes the rendered HTML (`<stem>.html`).
-  - `typst`: writes the rendered Typst markup (`<stem>.typ`).
-  - `pdf`: writes the compiled PDF (`<stem>.pdf`) (Requires compiling the CLI with `--features pdf`).
-- `--out-dir`: Output directory (defaults to the same directory as the input file).
-
-### `preview`
-Stream a raw `.md` file through the live-preview pipeline and print it to stdout. Frontmatter is silently stripped in this mode.
-
-```bash
-mpc preview <FILE> [--target <html|typst>]
-```
-- `<FILE>`: Source markdown file.
-- `--target`: `html` (default) or `typst`.
+`markplus_core` parses Markdown (with optional YAML frontmatter) into a
+**structured, versioned JSON AST**. It does not render HTML or Typst —
+rendering is the responsibility of a downstream crate or plugin that consumes
+the AST. This keeps the parser lean and completely independent of any output
+target.
 
 ---
 
-## API Documentation
+## Key capabilities
 
-The core provides both Native APIs (for Tauri / deploy passes) and WebAssembly APIs (for web clients).
+| Feature | Detail |
+|---|---|
+| **Platform sovereign** | Compiles to native (Tauri, CLI) and WebAssembly (browser/PWA) from one codebase |
+| **Versioned AST** | JSON output carries a `schema` version so renderers can detect incompatible shapes |
+| **Frontmatter** | YAML frontmatter extracted and serialised to JSON; stripped body kept separately |
+| **All pulldown-cmark extensions** | Tables, footnotes, strikethrough, task lists, math, GFM alerts, definition lists, superscript/subscript |
+| **Fenced block attrs** | `` ```python execute=true linenos `` → `{ "name": "python", "attrs": {...} }` |
+| **Extended links/images** | `[text](url){key=value}` and `![alt](src){width=480}` |
+| **Inline widgets** | `:[text]{tooltip text="Local oscillator"}` for custom inline extensions |
+| **Formal JSON Schema** | `schema/markplus-ast.v2.schema.json` — validators and renderers use this as the source of truth |
 
-### Native API
+---
 
-Use the native APIs in your Rust application to parse and compile Markdown documents.
+## Project structure
 
-#### `compile_document`
-Full compile pass over a raw `.md` file (which may contain frontmatter). Returns a `CompileResult` containing the separated frontmatter `meta`, the compiled AST `tokens`, and the `rendered` output.
-
-```rust
-pub fn compile_document(raw_md: &str, target: OutputTarget) -> Result<CompileResult, CompileError>
-```
-
-#### `preview_html` / `preview_typst`
-Compiles a raw `.md` string to HTML or Typst markup for live editor previews. Frontmatter is stripped silently, making it very fast for continuous rendering.
-
-```rust
-pub fn preview_html(raw_md: &str) -> String
-pub fn preview_typst(raw_md: &str) -> String
-```
-
-### Wasm API
-
-WebAssembly callers interact with strings passed from the JavaScript environment. Since the deploy pass already strips frontmatter, Wasm endpoints expect plain Markdown bodies (`json.body`).
-
-#### `compile_to_html` / `compile_to_typst`
-Compile a plain Markdown string (or parsed tokens JSON) to HTML/Typst. 
-
-```rust
-#[wasm_bindgen]
-pub fn compile_to_html(tokens_json: String) -> String
-
-#[wasm_bindgen]
-pub fn compile_to_typst(tokens_json: String) -> String
+```text
+markplus_core/
+├── Cargo.toml
+├── docs/
+│   ├── usage.md          ← API / CLI usage guide
+│   └── ast-reference.md  ← Markdown → AST node reference
+└── src/
+    ├── lib.rs            ← Public API (native + Wasm exports)
+    ├── main.rs           ← mpc CLI (single-command AST emitter)
+    ├── config.rs         ← Parser options / FrontmatterMode
+    ├── event_filter.rs   ← Frontmatter stripper, passes events through
+    ├── ast.rs            ← Stack-based AST builder
+    └── json.rs           ← SiteAsset wire format
 ```
 
 ---
 
-## How to Create a Plugin / Shortcode
+## Quick start
 
-Plugins in MarkPlus allow you to intercept specific code blocks or elements and render them customly for HTML and Typst output targets.
+### Build
 
-### The `Plugin` Trait
+```bash
+cargo build --release        # native lib + mpc CLI
+wasm-pack build --target web # WebAssembly package → pkg/
+```
 
-To create a plugin, you must implement the `Plugin` trait defined in `src/plugins/mod.rs`:
+### CLI
+
+```bash
+# Emit compact AST JSON
+mpc note.md
+
+# Emit pretty-printed AST JSON
+mpc --pretty note.md
+```
+
+### Rust library
 
 ```rust
-pub trait Plugin: Send + Sync {
-    // Unique name of the plugin (e.g., used as the language in a code block)
-    fn name(&self) -> &'static str;
-    
-    // Optional: Parse the raw input into a structured JSON value
-    fn parse(&self, raw: &str) -> Option<serde_json::Value> { None }
-    
-    // Render the element to HTML
-    fn render_html(&self, token: &serde_json::Value) -> Option<String> { None }
-    
-    // Render the element to Typst markup
-    fn render_typst(&self, token: &serde_json::Value) -> Option<String> { None }
-    
-    // Optional: Specify HTML dependencies (scripts, wasm, styles) required by this plugin
-    fn html_dependencies(&self) -> Option<HtmlDependencies> { None }
+use markplus_core::{parse_document, parse_body};
+
+// Full document with frontmatter
+let asset = parse_document(raw_md)?;
+let json  = asset.to_json()?;      // write to note.json
+
+// Pre-stripped body only
+let ast = parse_body(body_str);
+```
+
+### WebAssembly (JavaScript)
+
+```js
+import init, { parse_to_ast, parse_document_to_json } from './pkg/markplus_core.js';
+await init();
+
+// Plain markdown body → AST array JSON string
+const ast = JSON.parse(parse_to_ast(markdownBody));
+
+// Raw markdown (frontmatter ignored in wasm) → full SiteAsset JSON string
+const site = JSON.parse(parse_document_to_json(rawMarkdown));
+```
+
+---
+
+## Wire format — `note.json`
+
+```json
+{
+  "schema": 1,
+  "meta": {
+    "title": "RFSoC Mixer Design Notes",
+    "tags": ["rfsoc", "dsp"],
+    "date": "2026-05-30"
+  },
+  "ast": [
+    { "t": "heading", "level": 1, "children": [{ "t": "text", "text": "High Frequency Core" }] },
+    { "t": "fenced",  "name": "simby", "attrs": {}, "raw": "[RFSoC] ──► [Filter]" }
+  ]
 }
 ```
 
-### Example: Creating a `simby` Plugin
+See [`docs/ast-reference.md`](docs/ast-reference.md) for the full AST node schema.
 
-Here is an example of a simple plugin that takes the contents of a ````simby` code block and renders it as a `div` in HTML and a custom function call in Typst.
+---
 
-1. **Implement the plugin logic:**
+## Schema
 
-```rust
-use markplus_core::plugins::{Plugin, escape_attr, escape_typst_string};
-use serde_json::Value;
+The file [`schema/markplus-ast.v1.schema.json`](schema/markplus-ast.v1.schema.json)
+is a **JSON Schema 2020-12** document that formally defines every node type in the AST.
 
-pub struct SimbyPlugin;
+It is the **source of truth** for both `markplus_core` (producer) and all downstream
+renderers and plugins (consumers). When a new node type is added, the schema is updated
+first — then the core, then the renderers.
 
-impl Plugin for SimbyPlugin {
-    fn name(&self) -> &'static str {
-        "simby"
-    }
+### Validate your AST
 
-    fn render_html(&self, token: &Value) -> Option<String> {
-        let raw = token.get("raw").and_then(|v| v.as_str()).unwrap_or("");
-        Some(format!("<div class=\"markplus-plugin\" data-plugin=\"simby\" data-raw=\"{}\"></div>", escape_attr(raw)))
-    }
-
-    fn render_typst(&self, token: &Value) -> Option<String> {
-        let raw = token.get("raw").and_then(|v| v.as_str()).unwrap_or("");
-        Some(format!("#markplus-simby(\"{}\")", escape_typst_string(raw)))
-    }
-}
+```bash
+# Python (jsonschema)
+pip install jsonschema
+mpc note.md | python -c "
+import sys, json
+from jsonschema import validate
+ast = json.loads(sys.stdin.read())
+schema = json.load(open('schema/markplus-ast.v1.schema.json'))
+validate(instance=ast, schema=schema)
+print('valid')
+"
 ```
 
-2. **Register the plugin:**
-You must add your new plugin to the default registry inside `src/plugins/mod.rs`:
+See [`schema/CHANGELOG.md`](schema/CHANGELOG.md) for the schema versioning policy.
 
-```rust
-pub fn default_registry() -> PluginRegistry {
-    let mut reg = PluginRegistry::new();
-    reg.register(Box::new(mermaid::MermaidPlugin));
-    reg.register(Box::new(SimbyPlugin)); // Add your new plugin here
-    reg
-}
-```
+---
+
+## Further reading
+
+- [`docs/usage.md`](docs/usage.md) — detailed API and CLI usage
+- [`docs/ast-reference.md`](docs/ast-reference.md) — every Markdown construct mapped to its AST node
+- [`schema/markplus-ast.v1.schema.json`](schema/markplus-ast.v1.schema.json) — formal JSON Schema (machine-readable)
+- [`schema/CHANGELOG.md`](schema/CHANGELOG.md) — schema versioning history and breaking-change policy

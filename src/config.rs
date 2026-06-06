@@ -12,35 +12,39 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
+//! Parser configuration and pulldown-cmark option flags.
+//!
+//! [`FrontmatterMode`] controls whether the parser intercepts YAML `---` blocks.
+//! [`parser_options`] assembles the full [`pulldown_cmark::Options`] set used by
+//! every parse pass in this crate.
+
 use pulldown_cmark::Options;
-use serde::{Deserialize, Serialize};
 
+/// Whether the source document may contain YAML frontmatter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompilationMode {
-    Native,
-    Wasm,
+pub enum FrontmatterMode {
+    /// Parse and extract YAML frontmatter (native/deploy pass).
+    Enabled,
+    /// Skip frontmatter parsing — caller provides pre-stripped body.
+    Disabled,
 }
 
-/// Output rendering target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum OutputTarget {
-    Html,
-    Typst,
-}
-
-pub fn parser_options(mode: CompilationMode) -> Options {
+/// Build the pulldown-cmark option set.
+/// All stable extensions enabled; YAML frontmatter is gated on `mode`.
+pub fn parser_options(mode: FrontmatterMode) -> Options {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
+    opts.insert(Options::ENABLE_FOOTNOTES);
     opts.insert(Options::ENABLE_STRIKETHROUGH);
     opts.insert(Options::ENABLE_TASKLISTS);
-    opts.insert(Options::ENABLE_FOOTNOTES);
     opts.insert(Options::ENABLE_HEADING_ATTRIBUTES);
-    // YAML frontmatter is only parsed on native; in wasm the caller already
-    // stripped it (they fetched the pre-built JSON which contains the body).
-    if matches!(mode, CompilationMode::Native) {
+    opts.insert(Options::ENABLE_MATH);
+    opts.insert(Options::ENABLE_GFM);
+    opts.insert(Options::ENABLE_DEFINITION_LIST);
+    opts.insert(Options::ENABLE_SUPERSCRIPT);
+    opts.insert(Options::ENABLE_SUBSCRIPT);
+    if matches!(mode, FrontmatterMode::Enabled) {
         opts.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
     }
     opts
 }
-

@@ -1,0 +1,96 @@
+name: CD
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: mpc
+            asset_name: mpc-linux-amd64
+          - os: windows-latest
+            artifact_name: mpc.exe
+            asset_name: mpc-windows-amd64.exe
+          - os: macos-latest
+            artifact_name: mpc
+            asset_name: mpc-macos-amd64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native binary
+        run: cargo build --release
+
+      - name: Upload native binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/release/${{ matrix.artifact_name }}
+
+  build-wasm:
+    name: Build Wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Build Wasm
+        run: wasm-pack build --target web --release
+
+      - name: Zip Wasm package
+        run: zip -r markplus_core-wasm.zip pkg/
+
+      - name: Upload Wasm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: markplus_core-wasm
+          path: markplus_core-wasm.zip
+
+  release:
+    name: Release
+    needs: [build, build-wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_assets
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p final_assets
+          # GitHub Actions download-artifact creates subdirectories for each artifact name.
+          # We move them all into one flat directory.
+          find release_assets -type f -exec mv {} final_assets/ \;
+
+      - name: Create Draft Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: ${{ !endsWith(github.ref, '-stable') }}
+          files: final_assets/*

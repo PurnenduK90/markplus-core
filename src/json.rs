@@ -12,57 +12,74 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
+//! Wire format for the compiled site asset (`note_XXX.json`).
+//!
+//! [`SiteAsset`] is the top-level output of [`crate::parse_document`].
+//! It contains:
+//! - `schema` — integer version so renderers can detect breaking changes.
+//! - `meta` — parsed YAML frontmatter as a JSON value tree (native only).
+//! - `ast` — array of MarkPlus block nodes (see [`crate::ast`]).
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::CompileError;
 
 // ---------------------------------------------------------------------------
-// The static site asset emitted by the native deploy pass.
+// Wire format: note_XXXX.json
 //
-// note_101.json  →  { meta: {...frontmatter}, tokens: [...] }
-//   Web client fetches this once, then pipes `tokens` through wasm
-//   compile_to_html() or compile_to_typst() entirely on the client side.
+//  { "schema": 1, "meta": {...}, "ast": [...] }
 //
-// note_101.md    →  bare markdown body (no frontmatter)
-//   Consumed only by AI / LLM tooling that reads plain text off disk.
+//  Web client fetches this once per page.
+//  - "meta" is displayed immediately (title, date, tags).
+//  - "ast"  is passed to a renderer (wasm or external) to produce HTML/Typst.
 // ---------------------------------------------------------------------------
 
-/// The JSON asset written to `dist/static_api/note_101.json`.
-///
-/// The web client fetches this file once per page. The `meta` field is
-/// displayed immediately (title, tags, date). The `tokens` field is piped
-/// through the wasm `compile_to_html()` export to render the article, or
-/// through `compile_to_typst()` when the user requests a PDF.
+/// The JSON asset written to `dist/static_api/note_XXX.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SiteAsset {
+    /// Schema version — allows renderers to detect incompatible AST shapes.
+    pub schema: u32,
     /// Frontmatter metadata deserialized from YAML into a JSON value tree.
     /// `null` when the document has no frontmatter block.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<Value>,
-
-    /// The parsed AST tokens. This is the array the
-    /// wasm client receives and compiles on the fly.
-    pub tokens: Vec<Value>,
+    /// MarkPlus AST — array of block nodes.
+    pub ast: Vec<Value>,
 }
 
 impl SiteAsset {
-    /// Serialize to the `note_101.json` wire format.
+    /// Current wire-format schema version for serialized site assets.
+    pub const SCHEMA_VERSION: u32 = 1;
+
+    /// Build a site asset from optional frontmatter metadata and AST blocks.
+    pub fn new(meta: Option<Value>, ast: Vec<Value>) -> Self {
+        Self {
+            schema: Self::SCHEMA_VERSION,
+            meta,
+            ast,
+        }
+    }
+
+    /// Serialize to compact JSON (wire format).
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
 
-    /// Pretty-print variant for human-readable files.
+    /// Serialize to pretty-printed JSON (debug / human-readable).
     pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
 }
 
 // ---------------------------------------------------------------------------
-// Frontmatter parsing (native only — serde_yml is not compiled into wasm)
+// Frontmatter parsing (native only — serde_yml not compiled into wasm)
 // ---------------------------------------------------------------------------
 
-
+/// Parse YAML frontmatter text into a JSON value tree (native targets only).
+///
+/// Returns `None` when `raw` is `None` or empty.
+/// Returns `Err(CompileError::InvalidFrontmatter)` on malformed YAML.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn parse_frontmatter(raw: Option<&str>) -> Result<Option<Value>, CompileError> {
     match raw.map(str::trim).filter(|s| !s.is_empty()) {
@@ -73,15 +90,11 @@ pub fn parse_frontmatter(raw: Option<&str>) -> Result<Option<Value>, CompileErro
     }
 }
 
+/// No-op on wasm targets — frontmatter is always `None`.
+///
+/// `serde_yml` is not compiled into the wasm binary. The native deploy pass
+/// is responsible for parsing frontmatter before writing the `note.json` asset.
 #[cfg(target_arch = "wasm32")]
-pub fn parse_frontmatter(raw: Option<&str>) -> Result<Option<Value>, CompileError> {
-    // In wasm mode the caller already has the pre-built JSON and passes only
-    // the stripped `tokens` array — frontmatter never reaches this path.
-    if raw.is_some() {
-        return Err(CompileError::UnsupportedMode(
-            "frontmatter parsing is not available on wasm targets; \
-             pass the tokens from the fetched JSON instead",
-        ));
-    }
+pub fn parse_frontmatter(_raw: Option<&str>) -> Result<Option<Value>, CompileError> {
     Ok(None)
 }
