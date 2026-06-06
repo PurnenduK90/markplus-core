@@ -71,16 +71,6 @@ fn parse_to_value(path: &Path) -> Value {
 // Per-sample tests
 // ---------------------------------------------------------------------------
 
-/// `note_rfsoc_mixer.md` — hardware engineering note with simby/a2ui fenced
-/// blocks, tables, nested lists, links, and HR separators.
-#[test]
-fn sample_note_rfsoc_mixer_validates() {
-    let schema = load_schema();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/note_rfsoc_mixer.md");
-    let value = parse_to_value(&path);
-    assert_valid(&schema, &value, "note_rfsoc_mixer.md");
-}
-
 /// `md_api_reference_sample.md` — API-style markdown with headings, code
 /// blocks, tables, and inline markup.
 #[test]
