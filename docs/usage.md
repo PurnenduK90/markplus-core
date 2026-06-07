@@ -252,16 +252,13 @@ markplus_core  (this crate)
     └── [wasm] parse_to_ast()
         [wasm] parse_document_to_json()
 
-markplus_render_html  (separate crate / your code)
+markplus_render  (separate crate — see markplus-render/docs/usage.md)
 │
-└── Consumes AST JSON → HTML string
-    ├── Reads "t" field to dispatch node type
-    ├── Handles "fenced" nodes by name (mermaid, simby, a2ui, ...)
-    └── Falls back to <pre><code> for unknown names
-
-markplus_render_typst  (separate crate / your code)
-│
-└── Consumes AST JSON → Typst markup string
+└── Consumes AST JSON → HTML string, Typst source, or PDF bytes
+    ├── render_html(asset, template)         → HTML string
+    ├── render_typst_string(asset, template) → .typ source string
+    ├── compile_pdf(typst_src)               → PDF bytes (native + wasm)
+    └── render_to_file(asset, template, path) → writes .html / .typ / .pdf
 ```
 
 The design rule: **`markplus_core` never knows about renderers or plugins**.
