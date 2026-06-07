@@ -21,7 +21,7 @@ cargo build --release
 
 ### Usage
 
-```
+```text
 mpc [--pretty] <file.md>
 mpc --help
 ```
@@ -91,6 +91,24 @@ fn deploy(path: &str) -> Result<(), CompileError> {
 }
 ```
 
+### Native: JSON validation helpers
+
+Native-only helpers exist under the `markplus_core::json` module to perform
+lightweight validation of `note.json` assets and to read-and-validate a JSON
+asset file.
+
+```rust
+// Native-only example (not compiled in doctests)
+use std::path::Path;
+use markplus_core::json;
+
+let path = Path::new("dist/note.json");
+let s = std::fs::read_to_string(path).expect("read failed");
+json::validate_asset_json_str(&s).expect("schema validation failed");
+let asset = json::read_and_validate_asset(path).expect("read+validate failed");
+println!("schema = {}", asset.schema);
+```
+
 ### `parse_body` — pre-stripped body only
 
 Use this for **live editor preview** when the caller already holds the raw
@@ -126,7 +144,7 @@ match parse_document(&raw) {
 
 ### Data pipeline — Tauri deploy pass
 
-```
+```text
 Raw .md file
     │
     ├─ parse_document()
@@ -197,7 +215,7 @@ const site = JSON.parse(parse_document_to_json(rawMarkdownText));
 
 ## 4. Architecture overview
 
-```
+```text
 markplus_core  (this crate)
 │
 ├── Parses Markdown → AST JSON

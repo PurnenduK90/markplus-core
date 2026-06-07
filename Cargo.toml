@@ -32,7 +32,7 @@ wasm-bindgen = "0.2"
 serde_yml = "0.0.12"
 
 [dev-dependencies]
-jsonschema = { version = "0.46", default-features = false }
+jsonschema = "0.46"
 
 [[bin]]
 name = "mpc"

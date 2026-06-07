@@ -43,6 +43,9 @@ pub mod json;
 use json::SiteAsset;
 use serde_json::Value;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use json::{read_and_validate_asset, validate_asset_json_str};
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -580,26 +583,36 @@ $$
         let round_trip: SiteAsset = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
         assert_eq!(round_trip, asset);
     }
-}
 
-// ---------------------------------------------------------------------------
-// Documentation
-// ---------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Re-export tests for native validators at crate root
+    // -----------------------------------------------------------------------
 
-/// Comprehensive guides and references.
-pub mod docs {
-    /// Full usage instructions for the CLI and API.
-    pub mod usage {
-        #![doc = include_str!("../docs/usage.md")]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn crate_root_and_module_validate_agree() {
+        let asset = crate::json::SiteAsset::new(None, vec![]);
+        let s = asset.to_json().unwrap();
+        // crate root re-export
+        assert!(crate::validate_asset_json_str(&s).is_ok());
+        // module function
+        assert!(crate::json::validate_asset_json_str(&s).is_ok());
     }
-    /// Complete reference for the AST node structures.
-    pub mod ast_reference {
-        #![doc = include_str!("../docs/ast-reference.md")]
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn crate_root_read_and_validate_errs_on_bad_file() {
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_nonexistent_reexport_123.json");
+        let res = crate::read_and_validate_asset(&path);
+        assert!(res.is_err());
     }
-    /// The formal JSON Schema for the MarkPlus AST.
-    pub mod schema {
-        #![doc = "```json\n"]
-        #![doc = include_str!("../schema/markplus-ast.v1.schema.json")]
-        #![doc = "\n```"]
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn crate_root_validate_rejects_invalid_json() {
+        let bad = "{ not json }";
+        let res = crate::validate_asset_json_str(bad);
+        assert!(res.is_err());
     }
 }

@@ -98,3 +98,201 @@ pub fn parse_frontmatter(raw: Option<&str>) -> Result<Option<Value>, CompileErro
 pub fn parse_frontmatter(_raw: Option<&str>) -> Result<Option<Value>, CompileError> {
     Ok(None)
 }
+
+// ---------------------------------------------------------------------------
+// JSON validation helpers (native only, lightweight)
+// ---------------------------------------------------------------------------
+
+/// Lightweight validation of the SiteAsset JSON string.
+///
+/// This validates the top-level wire format expected by markplus_core:
+/// - top-level object
+/// - integer `schema` field equal to SiteAsset::SCHEMA_VERSION
+/// - optional `meta` (object or null)
+/// - required `ast` array
+///
+/// Returns Ok(()) when the basic shape is correct, or Err(vec![...]) with
+/// human-readable error messages when invalid.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn validate_asset_json_str(s: &str) -> Result<(), Vec<String>> {
+    let mut errs: Vec<String> = Vec::new();
+    let v: serde_json::Value = match serde_json::from_str(s) {
+        Ok(v) => v,
+        Err(e) => return Err(vec![format!("invalid JSON: {}", e)]),
+    };
+
+    if !v.is_object() {
+        return Err(vec!["top-level JSON is not an object".into()]);
+    }
+    let obj = v.as_object().unwrap();
+
+    // schema
+    match obj.get("schema") {
+        Some(sv) if sv.is_u64() || sv.is_i64() || sv.is_number() => {
+            let schema_num = sv.as_u64().or_else(|| sv.as_i64().map(|n| n as u64)).unwrap_or(0);
+            if schema_num != SiteAsset::SCHEMA_VERSION as u64 {
+                errs.push(format!("unexpected schema version: {} (expected {})", schema_num, SiteAsset::SCHEMA_VERSION));
+            }
+        }
+        _ => errs.push("missing or invalid 'schema' field (integer)".into()),
+    }
+
+    // meta
+    if let Some(meta) = obj.get("meta") {
+        if !(meta.is_object() || meta.is_null()) {
+            errs.push("'meta' must be an object or null".into());
+        }
+    }
+
+    // ast
+    match obj.get("ast") {
+        Some(astv) if astv.is_array() => {}
+        _ => errs.push("missing or invalid 'ast' field (array)".into()),
+    }
+
+    if errs.is_empty() { Ok(()) } else { Err(errs) }
+}
+
+/// Read a JSON file from `path`, validate it with the lightweight checker,
+/// and deserialize into a [`SiteAsset`]. Returns Err(String) on any failure.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_and_validate_asset(path: &std::path::Path) -> Result<SiteAsset, String> {
+    let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    validate_asset_json_str(&s).map_err(|errs| errs.join("; "))?;
+    serde_json::from_str(&s).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for json.rs — moved here from tests/ to improve per-file coverage
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::fs;
+
+    #[test]
+    fn parse_frontmatter_some() {
+        let raw = "title: hello\ndate: 2026-06-07\n";
+        let meta = parse_frontmatter(Some(raw)).expect("parse failed");
+        assert!(meta.is_some());
+        let m = meta.unwrap();
+        assert_eq!(m["title"], "hello");
+    }
+
+    #[test]
+    fn parse_frontmatter_none() {
+        let meta = parse_frontmatter(None).expect("parse failed");
+        assert!(meta.is_none());
+    }
+
+    #[test]
+    fn parse_frontmatter_invalid_yaml_errors() {
+        let bad = "title: [unclosed\n";
+        let err = parse_frontmatter(Some(bad));
+        assert!(matches!(err, Err(CompileError::InvalidFrontmatter(_))));
+    }
+
+    #[test]
+    fn validate_asset_json_str_valid_and_invalid() {
+        let asset = SiteAsset::new(None, vec![]);
+        let s = asset.to_json().unwrap();
+        assert!(validate_asset_json_str(&s).is_ok());
+
+        let bad = r#"{"schema":99,"ast":[]}"#;
+        let err = validate_asset_json_str(bad).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("unexpected schema version")));
+
+        let syntactically_bad = "{ not json ";
+        let err2 = validate_asset_json_str(syntactically_bad).unwrap_err();
+        assert!(err2.iter().any(|e| e.contains("invalid JSON")));
+    }
+
+    #[test]
+    fn read_and_validate_asset_file_roundtrip() {
+        let asset = SiteAsset::new(Some(json!({"title":"x"})), vec![]);
+        let s = asset.to_json_pretty().unwrap();
+
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_test_asset.json");
+        fs::write(&path, &s).expect("write failed");
+
+        let got = read_and_validate_asset(&path).expect("read/validate failed");
+        assert_eq!(got.schema, asset.schema);
+        assert_eq!(got.ast.len(), asset.ast.len());
+        assert_eq!(got.meta.unwrap()["title"], "x");
+
+        // Cleanup
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_and_validate_asset_invalid_json_file_returns_err() {
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_invalid_json.json");
+        fs::write(&path, "{ not json }").expect("write failed");
+        let res = read_and_validate_asset(&path);
+        assert!(res.is_err());
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn site_asset_json_roundtrip_and_pretty() {
+        let asset = SiteAsset::new(Some(json!({"k":"v"})), vec![json!({"t":"heading","level":1})]);
+        let compact = asset.to_json().unwrap();
+        let pretty = asset.to_json_pretty().unwrap();
+        // round-trip
+        let parsed: SiteAsset = serde_json::from_str(&compact).unwrap();
+        assert_eq!(parsed, asset);
+        // pretty should contain newlines
+        assert!(pretty.contains('\n'));
+    }
+
+    #[test]
+    fn validate_top_level_not_object() {
+        let err = validate_asset_json_str("[]").unwrap_err();
+        assert!(err.iter().any(|e| e.contains("top-level JSON is not an object")));
+    }
+
+    #[test]
+    fn validate_missing_schema() {
+        let bad = r#"{"ast":[]}"#;
+        let err = validate_asset_json_str(bad).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("missing or invalid 'schema'")));
+    }
+
+    #[test]
+    fn validate_schema_wrong_type() {
+        let bad = r#"{"schema":"one","ast":[]}"#;
+        let err = validate_asset_json_str(bad).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("missing or invalid 'schema'")));
+    }
+
+    #[test]
+    fn validate_meta_wrong_type() {
+        let bad = r#"{"schema":1,"meta":123,"ast":[]}"#;
+        let err = validate_asset_json_str(bad).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("'meta' must be an object or null")));
+    }
+
+    #[test]
+    fn validate_ast_wrong_type_or_missing() {
+        let bad1 = r#"{"schema":1}"#;
+        let err1 = validate_asset_json_str(bad1).unwrap_err();
+        assert!(err1.iter().any(|e| e.contains("missing or invalid 'ast'")));
+
+        let bad2 = r#"{"schema":1,"ast":{}}"#;
+        let err2 = validate_asset_json_str(bad2).unwrap_err();
+        assert!(err2.iter().any(|e| e.contains("missing or invalid 'ast'")));
+    }
+
+    #[test]
+    fn read_and_validate_asset_missing_file_returns_err() {
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_nonexistent_12345.json");
+        let res = read_and_validate_asset(&path);
+        assert!(res.is_err());
+    }
+}
