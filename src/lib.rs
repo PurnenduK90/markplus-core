@@ -39,12 +39,17 @@ pub mod ast;
 pub mod config;
 pub mod event_filter;
 pub mod json;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod csv;
 
 use json::SiteAsset;
 use serde_json::Value;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use json::{read_and_validate_asset, validate_asset_json_str, read_asset_json};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use csv::{read_csv_as_table_ast, CsvReadOptions};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

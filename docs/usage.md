@@ -109,6 +109,31 @@ let asset = json::read_and_validate_asset(path).expect("read+validate failed");
 println!("schema = {}", asset.schema);
 ```
 
+### Native: CSV → table AST helper
+
+A convenience native-only helper parses CSV files into a `table` AST node
+compatible with the MarkPlus AST (useful for ingesting spreadsheets).
+
+API (native-only):
+
+- markplus_core::csv::CsvReadOptions — configure start-line, header, row/col ranges
+- markplus_core::csv::read_csv_as_table_ast(path, &opts) -> serde_json::Value
+- markplus_core::csv::parse_csv_to_table_ast_str(csv_text, &opts) -> serde_json::Value
+
+Example:
+
+```rust
+use std::path::Path;
+use markplus_core::csv::{CsvReadOptions, read_csv_as_table_ast};
+
+let path = Path::new("data/table.csv");
+let opts = CsvReadOptions { header: true, ..Default::default() };
+let table = read_csv_as_table_ast(path, &opts).expect("csv->table failed");
+// `table` is a serde_json::Value representing a node like:
+// { "t":"table", "align": [..], "headers": [...], "rows": [[...]] }
+println!("columns = {}", table["headers"].as_array().map(|a| a.len()).unwrap_or(0));
+```
+
 ### `parse_body` — pre-stripped body only
 
 Use this for **live editor preview** when the caller already holds the raw

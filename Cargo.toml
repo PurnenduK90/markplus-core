@@ -30,6 +30,7 @@ wasm-bindgen = "0.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 serde_yml = "0.0.12"
+csv = "1.2"
 
 [dev-dependencies]
 jsonschema = "0.46"
