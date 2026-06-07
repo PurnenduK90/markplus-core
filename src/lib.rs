@@ -44,7 +44,7 @@ use json::SiteAsset;
 use serde_json::Value;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use json::{read_and_validate_asset, validate_asset_json_str};
+pub use json::{read_and_validate_asset, validate_asset_json_str, read_asset_json};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

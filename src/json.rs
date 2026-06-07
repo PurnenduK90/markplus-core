@@ -103,23 +103,13 @@ pub fn parse_frontmatter(_raw: Option<&str>) -> Result<Option<Value>, CompileErr
 // JSON validation helpers (native only, lightweight)
 // ---------------------------------------------------------------------------
 
-/// Lightweight validation of the SiteAsset JSON string.
+/// Validate a parsed JSON `Value` representing a SiteAsset wire format.
 ///
-/// This validates the top-level wire format expected by markplus_core:
-/// - top-level object
-/// - integer `schema` field equal to SiteAsset::SCHEMA_VERSION
-/// - optional `meta` (object or null)
-/// - required `ast` array
-///
-/// Returns Ok(()) when the basic shape is correct, or Err(vec![...]) with
-/// human-readable error messages when invalid.
+/// Extracted validator that operates on an existing `Value` to avoid
+/// duplicate parsing when callers already have the JSON tree.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn validate_asset_json_str(s: &str) -> Result<(), Vec<String>> {
+pub fn validate_asset_json_value(v: &serde_json::Value) -> Result<(), Vec<String>> {
     let mut errs: Vec<String> = Vec::new();
-    let v: serde_json::Value = match serde_json::from_str(s) {
-        Ok(v) => v,
-        Err(e) => return Err(vec![format!("invalid JSON: {}", e)]),
-    };
 
     if !v.is_object() {
         return Err(vec!["top-level JSON is not an object".into()]);
@@ -153,12 +143,39 @@ pub fn validate_asset_json_str(s: &str) -> Result<(), Vec<String>> {
     if errs.is_empty() { Ok(()) } else { Err(errs) }
 }
 
+/// Lightweight validation of the SiteAsset JSON string.
+///
+/// This validates the top-level wire format expected by markplus_core:
+/// - top-level object
+/// - integer `schema` field equal to SiteAsset::SCHEMA_VERSION
+/// - optional `meta` (object or null)
+/// - required `ast` array
+///
+/// Returns Ok(()) when the basic shape is correct, or Err(vec![...]) with
+/// human-readable error messages when invalid.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn validate_asset_json_str(s: &str) -> Result<(), Vec<String>> {
+    let v: serde_json::Value = match serde_json::from_str(s) {
+        Ok(v) => v,
+        Err(e) => return Err(vec![format!("invalid JSON: {}", e)]),
+    };
+    validate_asset_json_value(&v)
+}
+
 /// Read a JSON file from `path`, validate it with the lightweight checker,
 /// and deserialize into a [`SiteAsset`]. Returns Err(String) on any failure.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn read_and_validate_asset(path: &std::path::Path) -> Result<SiteAsset, String> {
+    let v = read_asset_json(path)?;
+    validate_asset_json_value(&v).map_err(|errs| errs.join("; "))?;
+    serde_json::from_value(v).map_err(|e| e.to_string())
+}
+
+/// Read a JSON file and return the parsed JSON `Value` without validation.
+/// Convenience wrapper for callers that only need the raw JSON tree.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_asset_json(path: &std::path::Path) -> Result<Value, String> {
     let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    validate_asset_json_str(&s).map_err(|errs| errs.join("; "))?;
     serde_json::from_str(&s).map_err(|e| e.to_string())
 }
 
@@ -254,6 +271,43 @@ mod tests {
     fn validate_top_level_not_object() {
         let err = validate_asset_json_str("[]").unwrap_err();
         assert!(err.iter().any(|e| e.contains("top-level JSON is not an object")));
+    }
+
+    // -----------------------------
+    // Tests for read_asset_json helper
+    // -----------------------------
+
+    #[test]
+    fn read_asset_json_success_reads_tree() {
+        let asset = SiteAsset::new(Some(json!({"title":"t"})), vec![]);
+        let s = asset.to_json_pretty().unwrap();
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_test_read_tree.json");
+        fs::write(&path, &s).expect("write failed");
+
+        let v = read_asset_json(&path).expect("read json failed");
+        assert_eq!(v["schema"], SiteAsset::SCHEMA_VERSION);
+        assert_eq!(v["meta"]["title"], "t");
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_asset_json_invalid_json_errs() {
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_test_read_tree_invalid.json");
+        fs::write(&path, "{ not json }").expect("write failed");
+        let res = read_asset_json(&path);
+        assert!(res.is_err());
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_asset_json_missing_file_errs() {
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_nonexistent_read_tree_999.json");
+        let res = read_asset_json(&path);
+        assert!(res.is_err());
     }
 
     #[test]
