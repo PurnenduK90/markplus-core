@@ -119,19 +119,26 @@ pub fn validate_asset_json_value(v: &serde_json::Value) -> Result<(), Vec<String
     // schema
     match obj.get("schema") {
         Some(sv) if sv.is_u64() || sv.is_i64() || sv.is_number() => {
-            let schema_num = sv.as_u64().or_else(|| sv.as_i64().map(|n| n as u64)).unwrap_or(0);
+            let schema_num = sv
+                .as_u64()
+                .or_else(|| sv.as_i64().map(|n| n as u64))
+                .unwrap_or(0);
             if schema_num != SiteAsset::SCHEMA_VERSION as u64 {
-                errs.push(format!("unexpected schema version: {} (expected {})", schema_num, SiteAsset::SCHEMA_VERSION));
+                errs.push(format!(
+                    "unexpected schema version: {} (expected {})",
+                    schema_num,
+                    SiteAsset::SCHEMA_VERSION
+                ));
             }
         }
         _ => errs.push("missing or invalid 'schema' field (integer)".into()),
     }
 
     // meta
-    if let Some(meta) = obj.get("meta") {
-        if !(meta.is_object() || meta.is_null()) {
-            errs.push("'meta' must be an object or null".into());
-        }
+    if let Some(meta) = obj.get("meta")
+        && !(meta.is_object() || meta.is_null())
+    {
+        errs.push("'meta' must be an object or null".into());
     }
 
     // ast
@@ -273,16 +280,12 @@ fn json_object_to_definition_list(
 
     let mut items: Vec<Value> = Vec::new();
     for (key, value) in obj {
-        items.push(
-            json!({ "t": "_def_title", "children": [{ "t": "text", "text": key }] }),
-        );
+        items.push(json!({ "t": "_def_title", "children": [{ "t": "text", "text": key }] }));
         let text = match value {
             Value::String(s) => s.clone(),
             v => v.to_string(),
         };
-        items.push(
-            json!({ "t": "_def_body", "children": [{ "t": "text", "text": text }] }),
-        );
+        items.push(json!({ "t": "_def_body", "children": [{ "t": "text", "text": text }] }));
     }
 
     Ok(vec![json!({ "t": "definition_list", "items": items })])
@@ -366,7 +369,10 @@ mod tests {
 
     #[test]
     fn site_asset_json_roundtrip_and_pretty() {
-        let asset = SiteAsset::new(Some(json!({"k":"v"})), vec![json!({"t":"heading","level":1})]);
+        let asset = SiteAsset::new(
+            Some(json!({"k":"v"})),
+            vec![json!({"t":"heading","level":1})],
+        );
         let compact = asset.to_json().unwrap();
         let pretty = asset.to_json_pretty().unwrap();
         // round-trip
@@ -379,7 +385,10 @@ mod tests {
     #[test]
     fn validate_top_level_not_object() {
         let err = validate_asset_json_str("[]").unwrap_err();
-        assert!(err.iter().any(|e| e.contains("top-level JSON is not an object")));
+        assert!(
+            err.iter()
+                .any(|e| e.contains("top-level JSON is not an object"))
+        );
     }
 
     // -----------------------------
@@ -423,21 +432,30 @@ mod tests {
     fn validate_missing_schema() {
         let bad = r#"{"ast":[]}"#;
         let err = validate_asset_json_str(bad).unwrap_err();
-        assert!(err.iter().any(|e| e.contains("missing or invalid 'schema'")));
+        assert!(
+            err.iter()
+                .any(|e| e.contains("missing or invalid 'schema'"))
+        );
     }
 
     #[test]
     fn validate_schema_wrong_type() {
         let bad = r#"{"schema":"one","ast":[]}"#;
         let err = validate_asset_json_str(bad).unwrap_err();
-        assert!(err.iter().any(|e| e.contains("missing or invalid 'schema'")));
+        assert!(
+            err.iter()
+                .any(|e| e.contains("missing or invalid 'schema'"))
+        );
     }
 
     #[test]
     fn validate_meta_wrong_type() {
         let bad = r#"{"schema":1,"meta":123,"ast":[]}"#;
         let err = validate_asset_json_str(bad).unwrap_err();
-        assert!(err.iter().any(|e| e.contains("'meta' must be an object or null")));
+        assert!(
+            err.iter()
+                .any(|e| e.contains("'meta' must be an object or null"))
+        );
     }
 
     #[test]

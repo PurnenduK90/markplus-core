@@ -1,7 +1,7 @@
 // Native-only mermaid helpers to produce a fenced AST node.
 // Not compiled into wasm builds.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 /// Parse mermaid diagram content into a `fenced` AST node.
 ///

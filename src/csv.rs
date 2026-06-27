@@ -1,7 +1,7 @@
 // Native-only CSV helpers to produce a table AST node.
 // Not compiled into wasm builds.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Options for reading CSV into a table AST node.
 #[derive(Debug, Clone)]
@@ -68,10 +68,10 @@ pub fn parse_csv_to_table_ast_str(csv_text: &str, opts: &CsvReadOptions) -> Resu
         if lineno < opts.start_line {
             continue;
         }
-        if let Some((rstart, rend)) = opts.row_range {
-            if lineno < rstart || lineno > rend {
-                continue;
-            }
+        if let Some((rstart, rend)) = opts.row_range
+            && (lineno < rstart || lineno > rend)
+        {
+            continue;
         }
         effective_rows.push(row);
     }
@@ -82,35 +82,55 @@ pub fn parse_csv_to_table_ast_str(csv_text: &str, opts: &CsvReadOptions) -> Resu
 
     if opts.header {
         // find header line relative to file
-        let header_lineno = if let Some(h) = opts.header_line { h } else { opts.start_line };
-        let idx = header_lineno.checked_sub(opts.start_line).unwrap_or(0);
+        let header_lineno = if let Some(h) = opts.header_line {
+            h
+        } else {
+            opts.start_line
+        };
+        let idx = header_lineno.saturating_sub(opts.start_line);
         if header_lineno < opts.start_line || header_lineno > total_lines {
             return Err("header_line out of range".into());
         }
         // effective_rows index for header
-        let header_row = &effective_rows.get(idx).ok_or_else(|| "header_line not available after start_line".to_string())?;
+        let header_row = &effective_rows
+            .get(idx)
+            .ok_or_else(|| "header_line not available after start_line".to_string())?;
         // build headers
         for cell in header_row.iter() {
             headers.push(json!({ "t": "_cell", "children": [{ "t": "text", "text": cell }] }));
         }
         // body rows are everything in effective_rows except at position idx
         for (i, row) in effective_rows.into_iter().enumerate() {
-            if i == idx { continue; }
-            body_rows.push(row.into_iter().map(|c| json!({ "t": "_cell", "children": [{ "t": "text", "text": c }] })).collect());
+            if i == idx {
+                continue;
+            }
+            body_rows.push(
+                row.into_iter()
+                    .map(|c| json!({ "t": "_cell", "children": [{ "t": "text", "text": c }] }))
+                    .collect(),
+            );
         }
     } else {
         // no header; all effective_rows become body rows
         for row in effective_rows.into_iter() {
-            body_rows.push(row.into_iter().map(|c| json!({ "t": "_cell", "children": [{ "t": "text", "text": c }] })).collect());
+            body_rows.push(
+                row.into_iter()
+                    .map(|c| json!({ "t": "_cell", "children": [{ "t": "text", "text": c }] }))
+                    .collect(),
+            );
         }
     }
 
     // Apply column slicing if requested. First determine max columns
     let mut maxcols = 0usize;
     for r in body_rows.iter() {
-        if r.len() > maxcols { maxcols = r.len(); }
+        if r.len() > maxcols {
+            maxcols = r.len();
+        }
     }
-    if headers.len() > maxcols { maxcols = headers.len(); }
+    if headers.len() > maxcols {
+        maxcols = headers.len();
+    }
 
     // Build align array default "none"
     let mut align = vec![];
@@ -132,7 +152,9 @@ pub fn parse_csv_to_table_ast_str(csv_text: &str, opts: &CsvReadOptions) -> Resu
         let mut out = Vec::new();
         for (i, h) in headers.into_iter().enumerate() {
             let colno = i + 1;
-            if colno < col_start || colno > col_end { continue; }
+            if colno < col_start || colno > col_end {
+                continue;
+            }
             out.push(h);
         }
         out
@@ -144,7 +166,9 @@ pub fn parse_csv_to_table_ast_str(csv_text: &str, opts: &CsvReadOptions) -> Resu
         let mut out_row: Vec<Value> = Vec::new();
         for (i, cell) in row.into_iter().enumerate() {
             let colno = i + 1;
-            if colno < col_start || colno > col_end { continue; }
+            if colno < col_start || colno > col_end {
+                continue;
+            }
             out_row.push(cell);
         }
         // pad to keep rectangular shape
@@ -165,7 +189,10 @@ pub fn parse_csv_to_table_ast_str(csv_text: &str, opts: &CsvReadOptions) -> Resu
 }
 
 /// Read a CSV file and produce a `table` AST node.
-pub fn read_csv_as_table_ast(path: &std::path::Path, opts: &CsvReadOptions) -> Result<Value, String> {
+pub fn read_csv_as_table_ast(
+    path: &std::path::Path,
+    opts: &CsvReadOptions,
+) -> Result<Value, String> {
     let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     parse_csv_to_table_ast_str(&s, opts)
 }
@@ -191,7 +218,7 @@ mod tests {
         let csv = "Name,Value,Unit\nGain,12,dB\nLoss,3,dB\n";
         let mut opts = CsvReadOptions::default();
         opts.header = true;
-        opts.col_range = Some((2,3));
+        opts.col_range = Some((2, 3));
         let v = parse_csv_to_table_ast_str(csv, &opts).expect("parse failed");
         assert_eq!(v["headers"].as_array().unwrap().len(), 2);
         let rows = v["rows"].as_array().unwrap();
@@ -201,12 +228,19 @@ mod tests {
     #[test]
     fn read_csv_file_roundtrip() {
         let csv = "h1,h2\na,1\nb,2\n";
-        let opts = CsvReadOptions { header: true, start_line: 1, ..Default::default() };
+        let opts = CsvReadOptions {
+            header: true,
+            start_line: 1,
+            ..Default::default()
+        };
         let mut path = std::env::temp_dir();
         path.push("markplus_core_test_csv.csv");
         fs::write(&path, csv).expect("write failed");
         let v = read_csv_as_table_ast(&path, &opts).expect("read failed");
-        assert_eq!(v["headers"].as_array().unwrap()[0]["children"][0]["text"], "h1");
+        assert_eq!(
+            v["headers"].as_array().unwrap()[0]["children"][0]["text"],
+            "h1"
+        );
         let _ = fs::remove_file(&path);
     }
 
@@ -258,7 +292,7 @@ mod tests {
     fn row_range_filters_rows() {
         let csv = "a,b,c\n1,2,3\n4,5,6\n7,8,9\n";
         let mut opts = CsvReadOptions::default();
-        opts.row_range = Some((2,3)); // include only lines 2 and 3
+        opts.row_range = Some((2, 3)); // include only lines 2 and 3
         let v = parse_csv_to_table_ast_str(csv, &opts).expect("parse failed");
         let rows = v["rows"].as_array().unwrap();
         assert_eq!(rows.len(), 2);
@@ -298,5 +332,4 @@ mod tests {
         let res = read_csv_as_table_ast(&path, &opts);
         assert!(res.is_err());
     }
-
 }

@@ -1,7 +1,7 @@
 // Native-only code-file helpers to produce a fenced AST node.
 // Not compiled into wasm builds.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Map a file extension to its canonical language name for syntax highlighting.
 pub fn extension_to_language(ext: &str) -> &str {
@@ -52,18 +52,52 @@ pub fn extension_to_language(ext: &str) -> &str {
 pub fn is_known_code_extension(ext: &str) -> bool {
     matches!(
         ext,
-        "rs" | "py" | "js" | "ts" | "jsx" | "tsx"
-            | "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" | "cs"
-            | "java" | "go" | "rb" | "php"
-            | "swift" | "kt" | "kts" | "scala"
-            | "sh" | "bash" | "zsh"
-            | "sql" | "r" | "lua"
-            | "yaml" | "yml" | "toml" | "xml"
-            | "html" | "htm" | "css" | "scss" | "sass"
-            | "dockerfile" | "makefile"
-            | "zig" | "nim" | "dart" | "v"
-            | "tf" | "hcl"
-            | "proto" | "graphql" | "gql"
+        "rs" | "py"
+            | "js"
+            | "ts"
+            | "jsx"
+            | "tsx"
+            | "c"
+            | "cpp"
+            | "cc"
+            | "cxx"
+            | "h"
+            | "hpp"
+            | "cs"
+            | "java"
+            | "go"
+            | "rb"
+            | "php"
+            | "swift"
+            | "kt"
+            | "kts"
+            | "scala"
+            | "sh"
+            | "bash"
+            | "zsh"
+            | "sql"
+            | "r"
+            | "lua"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "xml"
+            | "html"
+            | "htm"
+            | "css"
+            | "scss"
+            | "sass"
+            | "dockerfile"
+            | "makefile"
+            | "zig"
+            | "nim"
+            | "dart"
+            | "v"
+            | "tf"
+            | "hcl"
+            | "proto"
+            | "graphql"
+            | "gql"
     )
 }
 
@@ -83,10 +117,7 @@ pub fn parse_code_to_fenced_ast(content: &str, extension: &str) -> Value {
 /// Read a source-code file from `path` and produce a `fenced` AST node.
 pub fn read_code_as_fenced_ast(path: &std::path::Path) -> Result<Value, String> {
     let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     Ok(parse_code_to_fenced_ast(&content, ext))
 }
 

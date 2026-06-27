@@ -36,31 +36,34 @@
 //! ```
 
 pub mod ast;
+#[cfg(not(target_arch = "wasm32"))]
+/// Source code parsing logic converting code strings into fenced AST nodes.
+pub mod code;
 pub mod config;
+#[cfg(not(target_arch = "wasm32"))]
+/// CSV parsing logic converting flat csv lines into table AST nodes.
+pub mod csv;
 pub mod event_filter;
 pub mod json;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod csv;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod code;
-#[cfg(not(target_arch = "wasm32"))]
+/// Mermaid logic converting .mmd definitions to SVG renderable fenced nodes.
 pub mod mermaid;
 
 use json::SiteAsset;
 use serde_json::Value;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use json::{read_and_validate_asset, validate_asset_json_str, read_asset_json};
+pub use json::{read_and_validate_asset, read_asset_json, validate_asset_json_str};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use csv::{read_csv_as_table_ast, CsvReadOptions};
+pub use csv::{CsvReadOptions, read_csv_as_table_ast};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use code::{read_code_as_fenced_ast, parse_code_to_fenced_ast, is_known_code_extension};
+pub use code::{is_known_code_extension, parse_code_to_fenced_ast, read_code_as_fenced_ast};
 #[cfg(not(target_arch = "wasm32"))]
-pub use json::{read_json_data_as_ast, parse_json_data_to_ast};
+pub use json::{parse_json_data_to_ast, read_json_data_as_ast};
 #[cfg(not(target_arch = "wasm32"))]
-pub use mermaid::{read_mermaid_as_fenced_ast, parse_mermaid_to_fenced_ast};
+pub use mermaid::{parse_mermaid_to_fenced_ast, read_mermaid_as_fenced_ast};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
