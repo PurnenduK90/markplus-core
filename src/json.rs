@@ -180,6 +180,115 @@ pub fn read_asset_json(path: &std::path::Path) -> Result<Value, String> {
 }
 
 // ---------------------------------------------------------------------------
+// JSON data → AST helpers (native only)
+//
+// Convert arbitrary JSON data files into displayable AST nodes.
+// Distinct from the SiteAsset wire format above.
+// ---------------------------------------------------------------------------
+
+/// Parse a JSON data string and return AST block nodes.
+///
+/// Behavior:
+/// - Array of objects → `table` node (object keys as headers)
+/// - Single object    → `definition_list` node (key-value pairs)
+/// - Anything else    → `fenced` node with `name="json"` (pretty-printed)
+#[cfg(not(target_arch = "wasm32"))]
+pub fn parse_json_data_to_ast(content: &str) -> Result<Vec<Value>, String> {
+    use serde_json::json;
+
+    let parsed: Value = serde_json::from_str(content).map_err(|e| e.to_string())?;
+
+    match &parsed {
+        Value::Array(arr) if !arr.is_empty() && arr[0].is_object() => {
+            json_array_of_objects_to_table(arr)
+        }
+        Value::Object(obj) => json_object_to_definition_list(obj),
+        _ => {
+            let pretty = serde_json::to_string_pretty(&parsed).unwrap_or_default();
+            Ok(vec![json!({
+                "t": "fenced",
+                "name": "json",
+                "attrs": {},
+                "raw": pretty
+            })])
+        }
+    }
+}
+
+/// Read a JSON data file and return AST block nodes.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_json_data_as_ast(path: &std::path::Path) -> Result<Vec<Value>, String> {
+    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    parse_json_data_to_ast(&content)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn json_array_of_objects_to_table(arr: &[Value]) -> Result<Vec<Value>, String> {
+    use serde_json::json;
+
+    let keys: Vec<String> = match &arr[0] {
+        Value::Object(obj) => obj.keys().cloned().collect(),
+        _ => return Ok(vec![]),
+    };
+
+    let header_cells: Vec<Value> = keys
+        .iter()
+        .map(|k| json!({ "t": "_cell", "children": [{ "t": "text", "text": k }] }))
+        .collect();
+
+    let align: Vec<Value> = keys.iter().map(|_| json!("none")).collect();
+
+    let rows: Vec<Value> = arr
+        .iter()
+        .filter_map(|item| {
+            let obj = item.as_object()?;
+            let cells: Vec<Value> = keys
+                .iter()
+                .map(|k| {
+                    let text = match obj.get(k) {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(v) => v.to_string(),
+                        None => String::new(),
+                    };
+                    json!({ "t": "_cell", "children": [{ "t": "text", "text": text }] })
+                })
+                .collect();
+            Some(Value::Array(cells))
+        })
+        .collect();
+
+    Ok(vec![json!({
+        "t": "table",
+        "align": align,
+        "headers": header_cells,
+        "rows": rows,
+    })])
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn json_object_to_definition_list(
+    obj: &serde_json::Map<String, Value>,
+) -> Result<Vec<Value>, String> {
+    use serde_json::json;
+
+    let mut items: Vec<Value> = Vec::new();
+    for (key, value) in obj {
+        items.push(
+            json!({ "t": "_def_title", "children": [{ "t": "text", "text": key }] }),
+        );
+        let text = match value {
+            Value::String(s) => s.clone(),
+            v => v.to_string(),
+        };
+        items.push(
+            json!({ "t": "_def_body", "children": [{ "t": "text", "text": text }] }),
+        );
+    }
+
+    Ok(vec![json!({ "t": "definition_list", "items": items })])
+}
+
+// ---------------------------------------------------------------------------
 // Unit tests for json.rs — moved here from tests/ to improve per-file coverage
 // ---------------------------------------------------------------------------
 
