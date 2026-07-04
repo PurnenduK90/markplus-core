@@ -159,9 +159,13 @@ impl<'a> AstBuilder<'a> {
             Event::Html(t) | Event::InlineHtml(t) => {
                 let s = t.as_ref();
                 if self.stack.is_empty() {
-                    self.push_block(json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}));
+                    self.push_block(
+                        json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
+                    );
                 } else {
-                    self.push_inline(json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}));
+                    self.push_inline(
+                        json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
+                    );
                 }
             }
 
@@ -253,7 +257,8 @@ impl<'a> AstBuilder<'a> {
             Tag::Item => self.stack.push(Frame::new("list_item", range.clone())),
 
             Tag::FootnoteDefinition(label) => {
-                let f = Frame::new("footnote_def", range.clone()).with("label", json!(label.as_ref()));
+                let f =
+                    Frame::new("footnote_def", range.clone()).with("label", json!(label.as_ref()));
                 self.stack.push(f);
             }
 
@@ -273,9 +278,13 @@ impl<'a> AstBuilder<'a> {
             }
             Tag::TableCell => self.stack.push(Frame::new("_cell", range.clone())),
 
-            Tag::DefinitionList => self.stack.push(Frame::new("definition_list", range.clone())),
+            Tag::DefinitionList => self
+                .stack
+                .push(Frame::new("definition_list", range.clone())),
             Tag::DefinitionListTitle => self.stack.push(Frame::new("_def_title", range.clone())),
-            Tag::DefinitionListDefinition => self.stack.push(Frame::new("_def_body", range.clone())),
+            Tag::DefinitionListDefinition => {
+                self.stack.push(Frame::new("_def_body", range.clone()))
+            }
 
             Tag::Emphasis => self.stack.push(Frame::new("em", range.clone())),
             Tag::Strong => self.stack.push(Frame::new("strong", range.clone())),
@@ -631,7 +640,10 @@ fn scan_inline_widgets(s: &str, mut start_offset: usize) -> Vec<Value> {
             let candidate = &remaining[pos..];
             if let Some((mut widget, consumed)) = parse_inline_widget(candidate) {
                 if let Value::Object(ref mut map) = widget {
-                    map.insert("range".into(), json!([start_offset, start_offset + consumed]));
+                    map.insert(
+                        "range".into(),
+                        json!([start_offset, start_offset + consumed]),
+                    );
                 }
                 result.push(widget);
                 remaining = &remaining[pos + consumed..];

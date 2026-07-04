@@ -62,7 +62,10 @@ impl SiteAsset {
     /// Build a site asset from optional frontmatter metadata and AST blocks.
     pub fn new(meta: Option<Value>, ast: Vec<Value>) -> Self {
         Self {
-            schema: SchemaVersion { major: Self::SCHEMA_MAJOR, minor: Self::SCHEMA_MINOR },
+            schema: SchemaVersion {
+                major: Self::SCHEMA_MAJOR,
+                minor: Self::SCHEMA_MINOR,
+            },
             meta,
             ast,
         }
@@ -136,7 +139,8 @@ pub fn validate_asset_json_value(v: &serde_json::Value) -> Result<(), Vec<String
                 ));
             }
         }
-        _ => errs.push("missing or invalid 'schema' field (must be an object with major/minor)".into()),
+        _ => errs
+            .push("missing or invalid 'schema' field (must be an object with major/minor)".into()),
     }
 
     // meta
@@ -337,7 +341,10 @@ mod tests {
 
         let bad = r#"{"schema":{"major":99,"minor":0},"ast":[]}"#;
         let err = validate_asset_json_str(bad).unwrap_err();
-        assert!(err.iter().any(|e| e.contains("unexpected schema major version")));
+        assert!(
+            err.iter()
+                .any(|e| e.contains("unexpected schema major version"))
+        );
 
         let syntactically_bad = "{ not json ";
         let err2 = validate_asset_json_str(syntactically_bad).unwrap_err();

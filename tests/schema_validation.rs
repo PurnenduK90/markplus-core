@@ -189,8 +189,14 @@ $$
 fn site_asset_schema_field_is_1_1() {
     let asset = parse_document("# Hi").unwrap();
     let value: Value = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
-    assert_eq!(value["schema"]["major"], 1, "schema major field must equal 1");
-    assert_eq!(value["schema"]["minor"], 1, "schema minor field must equal 1");
+    assert_eq!(
+        value["schema"]["major"], 1,
+        "schema major field must equal 1"
+    );
+    assert_eq!(
+        value["schema"]["minor"], 1,
+        "schema minor field must equal 1"
+    );
 }
 
 /// A document with unknown schema version must fail schema validation.
