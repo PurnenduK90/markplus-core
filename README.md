@@ -6,7 +6,7 @@
 [![CI](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/PurnenduK90/markplus-core/graph/badge.svg)](https://codecov.io/gh/PurnenduK90/markplus-core)
 
-A universal, high-performance Markdown → AST compiler written in Rust.
+A universal, high-performance Markdown → AST compiler written in Rust by **[Cadiora](https://cadiora.com)**.
 
 `markplus_core` parses Markdown (with optional YAML frontmatter) into a
 **structured, versioned JSON AST**. It does not render HTML or Typst —
@@ -24,10 +24,12 @@ target.
 | **Versioned AST** | JSON output carries a `schema` version so renderers can detect incompatible shapes |
 | **Frontmatter** | YAML frontmatter extracted and serialised to JSON; stripped body kept separately |
 | **All pulldown-cmark extensions** | Tables, footnotes, strikethrough, task lists, math, GFM alerts, definition lists, superscript/subscript |
+| **Data File Parsers** | Parse `.csv` and `.json` directly into Markdown Table/Definition List AST nodes |
+| **Media File Parsers** | Parse Source Code and Mermaid (`.mmd`) files into Fenced Code Block AST nodes |
 | **Fenced block attrs** | `` ```python execute=true linenos `` → `{ "name": "python", "attrs": {...} }` |
 | **Extended links/images** | `[text](url){key=value}` and `![alt](src){width=480}` |
 | **Inline widgets** | `:[text]{tooltip text="Local oscillator"}` for custom inline extensions |
-| **Formal JSON Schema** | `schema/markplus-ast.v2.schema.json` — validators and renderers use this as the source of truth |
+| **Formal JSON Validation** | Built-in strict JSON validation for `SiteAsset` structure |
 
 ---
 
@@ -45,7 +47,11 @@ markplus_core/
     ├── config.rs         ← Parser options / FrontmatterMode
     ├── event_filter.rs   ← Frontmatter stripper, passes events through
     ├── ast.rs            ← Stack-based AST builder
-    └── json.rs           ← SiteAsset wire format
+    ├── json.rs           ← SiteAsset wire format & validation
+    ├── csv.rs            ← CSV file parser
+    ├── json_data.rs      ← JSON data file parser
+    ├── code.rs           ← Source code file parser
+    └── mermaid.rs        ← Mermaid file parser
 ```
 
 ---
