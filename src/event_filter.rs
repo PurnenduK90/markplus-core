@@ -32,8 +32,8 @@ use crate::config::{FrontmatterMode, parser_options};
 pub struct ParsedDocument<'a> {
     /// Raw YAML text between `---` delimiters, if present and mode is Enabled.
     pub frontmatter: Option<String>,
-    /// All markdown events with frontmatter stripped out.
-    pub events: Vec<Event<'a>>,
+    /// All markdown events with frontmatter stripped out, paired with their byte ranges.
+    pub events: Vec<(Event<'a>, std::ops::Range<usize>)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -50,9 +50,9 @@ pub fn parse<'a>(raw: &'a str, mode: FrontmatterMode) -> ParsedDocument<'a> {
 
     let mut frontmatter_buf = String::new();
     let mut in_frontmatter = false;
-    let mut events: Vec<Event<'a>> = Vec::new();
+    let mut events: Vec<(Event<'a>, std::ops::Range<usize>)> = Vec::new();
 
-    for event in parser {
+    for (event, range) in parser.into_offset_iter() {
         match event {
             Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
                 in_frontmatter = true;
@@ -69,7 +69,7 @@ pub fn parse<'a>(raw: &'a str, mode: FrontmatterMode) -> ParsedDocument<'a> {
                 let _ = other;
             }
             other => {
-                events.push(other);
+                events.push((other, range));
             }
         }
     }

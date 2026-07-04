@@ -29,7 +29,7 @@ use serde_json::Value;
 fn load_schema() -> Value {
     let schema_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("schema")
-        .join("markplus-ast.v1.schema.json");
+        .join("markplus-ast.v1.1.schema.json");
     let raw = fs::read_to_string(&schema_path)
         .unwrap_or_else(|e| panic!("Cannot read schema at {:?}: {}", schema_path, e));
     serde_json::from_str(&raw).unwrap_or_else(|e| panic!("Schema is not valid JSON: {}", e))
@@ -184,23 +184,24 @@ $$
 // Schema-level invariant tests
 // ---------------------------------------------------------------------------
 
-/// Schema version in `SiteAsset` must be 1.
+/// Schema version in `SiteAsset` must be { major: 1, minor: 1 }.
 #[test]
-fn site_asset_schema_field_is_1() {
+fn site_asset_schema_field_is_1_1() {
     let asset = parse_document("# Hi").unwrap();
     let value: Value = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
-    assert_eq!(value["schema"], 1, "schema field must equal 1");
+    assert_eq!(value["schema"]["major"], 1, "schema major field must equal 1");
+    assert_eq!(value["schema"]["minor"], 1, "schema minor field must equal 1");
 }
 
 /// A document with unknown schema version must fail schema validation.
 #[test]
 fn wrong_schema_version_fails_validation() {
     let schema = load_schema();
-    let invalid = serde_json::json!({ "schema": 99, "ast": [] });
+    let invalid = serde_json::json!({ "schema": { "major": 99, "minor": 0 }, "ast": [] });
     let validator = jsonschema::validator_for(&schema).unwrap();
     assert!(
         validator.validate(&invalid).is_err(),
-        "schema version 99 should fail validation"
+        "schema major version 99 should fail validation"
     );
 }
 

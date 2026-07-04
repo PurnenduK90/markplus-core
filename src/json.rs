@@ -35,11 +35,17 @@ use crate::CompileError;
 //  - "ast"  is passed to a renderer (wasm or external) to produce HTML/Typst.
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SchemaVersion {
+    pub major: u32,
+    pub minor: u32,
+}
+
 /// The JSON asset written to `dist/static_api/note_XXX.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SiteAsset {
     /// Schema version — allows renderers to detect incompatible AST shapes.
-    pub schema: u32,
+    pub schema: SchemaVersion,
     /// Frontmatter metadata deserialized from YAML into a JSON value tree.
     /// `null` when the document has no frontmatter block.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,12 +56,13 @@ pub struct SiteAsset {
 
 impl SiteAsset {
     /// Current wire-format schema version for serialized site assets.
-    pub const SCHEMA_VERSION: u32 = 1;
+    pub const SCHEMA_MAJOR: u32 = 1;
+    pub const SCHEMA_MINOR: u32 = 1;
 
     /// Build a site asset from optional frontmatter metadata and AST blocks.
     pub fn new(meta: Option<Value>, ast: Vec<Value>) -> Self {
         Self {
-            schema: Self::SCHEMA_VERSION,
+            schema: SchemaVersion { major: Self::SCHEMA_MAJOR, minor: Self::SCHEMA_MINOR },
             meta,
             ast,
         }
@@ -118,20 +125,18 @@ pub fn validate_asset_json_value(v: &serde_json::Value) -> Result<(), Vec<String
 
     // schema
     match obj.get("schema") {
-        Some(sv) if sv.is_u64() || sv.is_i64() || sv.is_number() => {
-            let schema_num = sv
-                .as_u64()
-                .or_else(|| sv.as_i64().map(|n| n as u64))
-                .unwrap_or(0);
-            if schema_num != SiteAsset::SCHEMA_VERSION as u64 {
+        Some(Value::Object(sv)) => {
+            let major = sv.get("major").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let minor = sv.get("minor").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            if major != SiteAsset::SCHEMA_MAJOR {
                 errs.push(format!(
-                    "unexpected schema version: {} (expected {})",
-                    schema_num,
-                    SiteAsset::SCHEMA_VERSION
+                    "unexpected schema major version: {} (expected {})",
+                    major,
+                    SiteAsset::SCHEMA_MAJOR
                 ));
             }
         }
-        _ => errs.push("missing or invalid 'schema' field (integer)".into()),
+        _ => errs.push("missing or invalid 'schema' field (must be an object with major/minor)".into()),
     }
 
     // meta
@@ -330,9 +335,9 @@ mod tests {
         let s = asset.to_json().unwrap();
         assert!(validate_asset_json_str(&s).is_ok());
 
-        let bad = r#"{"schema":99,"ast":[]}"#;
+        let bad = r#"{"schema":{"major":99,"minor":0},"ast":[]}"#;
         let err = validate_asset_json_str(bad).unwrap_err();
-        assert!(err.iter().any(|e| e.contains("unexpected schema version")));
+        assert!(err.iter().any(|e| e.contains("unexpected schema major version")));
 
         let syntactically_bad = "{ not json ";
         let err2 = validate_asset_json_str(syntactically_bad).unwrap_err();
@@ -404,7 +409,8 @@ mod tests {
         fs::write(&path, &s).expect("write failed");
 
         let v = read_asset_json(&path).expect("read json failed");
-        assert_eq!(v["schema"], SiteAsset::SCHEMA_VERSION);
+        assert_eq!(v["schema"]["major"], SiteAsset::SCHEMA_MAJOR);
+        assert_eq!(v["schema"]["minor"], SiteAsset::SCHEMA_MINOR);
         assert_eq!(v["meta"]["title"], "t");
 
         let _ = fs::remove_file(&path);
@@ -450,7 +456,7 @@ mod tests {
 
     #[test]
     fn validate_meta_wrong_type() {
-        let bad = r#"{"schema":1,"meta":123,"ast":[]}"#;
+        let bad = r#"{"schema":{"major":1,"minor":1},"meta":123,"ast":[]}"#;
         let err = validate_asset_json_str(bad).unwrap_err();
         assert!(
             err.iter()
@@ -460,11 +466,11 @@ mod tests {
 
     #[test]
     fn validate_ast_wrong_type_or_missing() {
-        let bad1 = r#"{"schema":1}"#;
+        let bad1 = r#"{"schema":{"major":1,"minor":1}}"#;
         let err1 = validate_asset_json_str(bad1).unwrap_err();
         assert!(err1.iter().any(|e| e.contains("missing or invalid 'ast'")));
 
-        let bad2 = r#"{"schema":1,"ast":{}}"#;
+        let bad2 = r#"{"schema":{"major":1,"minor":1},"ast":{}}"#;
         let err2 = validate_asset_json_str(bad2).unwrap_err();
         assert!(err2.iter().any(|e| e.contains("missing or invalid 'ast'")));
     }
