@@ -231,7 +231,8 @@ $$
     #[test]
     fn parse_document_extracts_meta() {
         let asset = parse_document(FULL_DOC).unwrap();
-        assert_eq!(asset.schema, SiteAsset::SCHEMA_VERSION);
+        assert_eq!(asset.schema.major, SiteAsset::SCHEMA_MAJOR);
+        assert_eq!(asset.schema.minor, SiteAsset::SCHEMA_MINOR);
         assert_eq!(
             asset.meta,
             Some(json!({
@@ -330,7 +331,8 @@ $$
     fn site_asset_serializes_with_schema_version() {
         let asset = parse_document(FULL_DOC).unwrap();
         let json: Value = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
-        assert_eq!(json["schema"], SiteAsset::SCHEMA_VERSION);
+        assert_eq!(json["schema"]["major"], SiteAsset::SCHEMA_MAJOR);
+        assert_eq!(json["schema"]["minor"], SiteAsset::SCHEMA_MINOR);
         assert!(json["ast"].is_array());
     }
 
@@ -593,7 +595,8 @@ $$
 
     #[test]
     fn site_asset_schema_version_is_1() {
-        assert_eq!(SiteAsset::SCHEMA_VERSION, 1);
+        assert_eq!(SiteAsset::SCHEMA_MAJOR, 1);
+        assert_eq!(SiteAsset::SCHEMA_MINOR, 1);
     }
 
     #[test]
