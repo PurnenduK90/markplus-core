@@ -6,7 +6,7 @@
 [![CI](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PurnenduK90/markplus-core/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/PurnenduK90/markplus-core/graph/badge.svg)](https://codecov.io/gh/PurnenduK90/markplus-core)
 
-A universal, high-performance Markdown → AST compiler written in Rust.
+A universal, high-performance Markdown → AST compiler written in Rust by **[Cadiora](https://cadiora.com)**.
 
 `markplus_core` parses Markdown (with optional YAML frontmatter) into a
 **structured, versioned JSON AST**. It does not render HTML or Typst —
@@ -24,10 +24,12 @@ target.
 | **Versioned AST** | JSON output carries a `schema` version so renderers can detect incompatible shapes |
 | **Frontmatter** | YAML frontmatter extracted and serialised to JSON; stripped body kept separately |
 | **All pulldown-cmark extensions** | Tables, footnotes, strikethrough, task lists, math, GFM alerts, definition lists, superscript/subscript |
+| **Data File Parsers** | Parse `.csv` and `.json` directly into Markdown Table/Definition List AST nodes |
+| **Media File Parsers** | Parse Source Code and Mermaid (`.mmd`) files into Fenced Code Block AST nodes |
 | **Fenced block attrs** | `` ```python execute=true linenos `` → `{ "name": "python", "attrs": {...} }` |
 | **Extended links/images** | `[text](url){key=value}` and `![alt](src){width=480}` |
 | **Inline widgets** | `:[text]{tooltip text="Local oscillator"}` for custom inline extensions |
-| **Formal JSON Schema** | `schema/markplus-ast.v2.schema.json` — validators and renderers use this as the source of truth |
+| **Formal JSON Validation** | Built-in strict JSON validation for `SiteAsset` structure |
 
 ---
 
@@ -45,7 +47,11 @@ markplus_core/
     ├── config.rs         ← Parser options / FrontmatterMode
     ├── event_filter.rs   ← Frontmatter stripper, passes events through
     ├── ast.rs            ← Stack-based AST builder
-    └── json.rs           ← SiteAsset wire format
+    ├── json.rs           ← SiteAsset wire format & validation
+    ├── csv.rs            ← CSV file parser
+    ├── json_data.rs      ← JSON data file parser
+    ├── code.rs           ← Source code file parser
+    └── mermaid.rs        ← Mermaid file parser
 ```
 
 ---
@@ -120,7 +126,7 @@ See [`docs/ast-reference.md`](docs/ast-reference.md) for the full AST node schem
 
 ## Schema
 
-The file [`schema/markplus-ast.v1.schema.json`](schema/markplus-ast.v1.schema.json)
+The file [`schema/markplus-ast.v1.1.schema.json`](schema/markplus-ast.v1.1.schema.json)
 is a **JSON Schema 2020-12** document that formally defines every node type in the AST.
 
 It is the **source of truth** for both `markplus_core` (producer) and all downstream
@@ -136,7 +142,7 @@ mpc note.md | python -c "
 import sys, json
 from jsonschema import validate
 ast = json.loads(sys.stdin.read())
-schema = json.load(open('schema/markplus-ast.v1.schema.json'))
+schema = json.load(open('schema/markplus-ast.v1.1.schema.json'))
 validate(instance=ast, schema=schema)
 print('valid')
 "
@@ -150,5 +156,5 @@ See [`schema/CHANGELOG.md`](schema/CHANGELOG.md) for the schema versioning polic
 
 - [`docs/usage.md`](docs/usage.md) — detailed API and CLI usage
 - [`docs/ast-reference.md`](docs/ast-reference.md) — every Markdown construct mapped to its AST node
-- [`schema/markplus-ast.v1.schema.json`](schema/markplus-ast.v1.schema.json) — formal JSON Schema (machine-readable)
+- [`schema/markplus-ast.v1.1.schema.json`](schema/markplus-ast.v1.1.schema.json) — formal JSON Schema (machine-readable)
 - [`schema/CHANGELOG.md`](schema/CHANGELOG.md) — schema versioning history and breaking-change policy

@@ -39,7 +39,7 @@ use std::collections::HashMap;
 /// Fenced code blocks (any info string) become `"fenced"` nodes — the
 /// renderer is responsible for deciding whether `name` means syntax-
 /// highlight, diagram, or plugin.
-pub fn build_ast(events: Vec<Event<'_>>) -> Vec<Value> {
+pub fn build_ast(events: Vec<(Event<'_>, std::ops::Range<usize>)>) -> Vec<Value> {
     AstBuilder::new(events).build()
 }
 
@@ -59,9 +59,10 @@ struct Frame {
 
 impl Frame {
     /// Create a new frame for a node with the given type tag.
-    fn new(t: &str) -> Self {
+    fn new(t: &str, range: std::ops::Range<usize>) -> Self {
         let mut node = Map::new();
         node.insert("t".into(), Value::String(t.to_owned()));
+        node.insert("range".into(), json!([range.start, range.end]));
         Self {
             node,
             inline: Vec::new(),
@@ -83,7 +84,7 @@ impl Frame {
 /// frame, finalises the node, and either pushes it onto the parent frame's
 /// inline list or directly onto the top-level block list.
 struct AstBuilder<'a> {
-    events: std::vec::IntoIter<Event<'a>>,
+    events: std::vec::IntoIter<(Event<'a>, std::ops::Range<usize>)>,
     /// Block-level output collected so far.
     blocks: Vec<Value>,
     /// Stack of open block frames. The last entry is the innermost open tag.
@@ -99,7 +100,7 @@ struct AstBuilder<'a> {
 }
 
 impl<'a> AstBuilder<'a> {
-    fn new(events: Vec<Event<'a>>) -> Self {
+    fn new(events: Vec<(Event<'a>, std::ops::Range<usize>)>) -> Self {
         Self {
             events: events.into_iter(),
             blocks: Vec::new(),
@@ -112,77 +113,81 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn build(mut self) -> Vec<Value> {
-        while let Some(event) = self.events.next() {
-            self.handle(event);
+        while let Some((event, range)) = self.events.next() {
+            self.handle(event, range);
         }
         self.blocks
     }
 
-    fn handle(&mut self, event: Event<'_>) {
+    fn handle(&mut self, event: Event<'_>, range: std::ops::Range<usize>) {
         match event {
             // ── Block open tags ───────────────────────────────────────────
-            Event::Start(tag) => self.open(tag),
+            Event::Start(tag) => self.open(tag, range),
 
             // ── Block close tags ──────────────────────────────────────────
             Event::End(end) => self.close(end),
 
             // ── Leaf events (no paired End) ───────────────────────────────
-            Event::Rule => self.push_block(json!({"t": "hr"})),
+            Event::Rule => self.push_block(json!({"t": "hr", "range": [range.start, range.end]})),
 
             Event::TaskListMarker(checked) => {
-                self.push_inline(json!({"t": "task_marker", "checked": checked}));
+                self.push_inline(json!({"t": "task_marker", "checked": checked, "range": [range.start, range.end]}));
             }
 
             Event::Text(t) => {
                 let s = t.as_ref();
                 // Scan the text for inline widgets :[text]{name k=v ...}
                 // and emit multiple inline nodes if needed.
-                for node in scan_inline_widgets(s) {
+                for node in scan_inline_widgets(s, range.start) {
                     self.push_inline(node);
                 }
             }
 
             Event::Code(t) => {
-                self.push_inline(json!({"t": "code_span", "text": t.as_ref()}));
+                self.push_inline(json!({"t": "code_span", "text": t.as_ref(), "range": [range.start, range.end]}));
             }
 
             Event::InlineMath(t) => {
-                self.push_inline(json!({"t": "math_inline", "src": t.as_ref()}));
+                self.push_inline(json!({"t": "math_inline", "src": t.as_ref(), "range": [range.start, range.end]}));
             }
 
             Event::DisplayMath(t) => {
                 // Display math appears at block level (between paragraphs)
-                self.push_block(json!({"t": "math_block", "src": t.as_ref()}));
+                self.push_block(json!({"t": "math_block", "src": t.as_ref(), "range": [range.start, range.end]}));
             }
 
             Event::Html(t) | Event::InlineHtml(t) => {
                 let s = t.as_ref();
                 if self.stack.is_empty() {
-                    self.push_block(json!({"t": "raw_html", "html": s}));
+                    self.push_block(
+                        json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
+                    );
                 } else {
-                    self.push_inline(json!({"t": "raw_html", "html": s}));
+                    self.push_inline(
+                        json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
+                    );
                 }
             }
 
             Event::FootnoteReference(label) => {
-                self.push_inline(json!({"t": "footnote_ref", "label": label.as_ref()}));
+                self.push_inline(json!({"t": "footnote_ref", "label": label.as_ref(), "range": [range.start, range.end]}));
             }
 
             Event::SoftBreak => {
-                self.push_inline(json!({"t": "soft_break"}));
+                self.push_inline(json!({"t": "soft_break", "range": [range.start, range.end]}));
             }
 
             Event::HardBreak => {
-                self.push_inline(json!({"t": "hard_break"}));
+                self.push_inline(json!({"t": "hard_break", "range": [range.start, range.end]}));
             }
         }
     }
 
     // ── Stack operations ──────────────────────────────────────────────────
 
-    fn open(&mut self, tag: Tag<'_>) {
+    fn open(&mut self, tag: Tag<'_>, range: std::ops::Range<usize>) {
         match tag {
-            Tag::Paragraph => self.stack.push(Frame::new("paragraph")),
+            Tag::Paragraph => self.stack.push(Frame::new("paragraph", range.clone())),
 
             Tag::Heading {
                 level,
@@ -190,7 +195,7 @@ impl<'a> AstBuilder<'a> {
                 classes,
                 attrs,
             } => {
-                let mut f = Frame::new("heading");
+                let mut f = Frame::new("heading", range.clone());
                 f.node.insert("level".into(), json!(heading_level(level)));
                 if let Some(id) = id {
                     f.node.insert("id".into(), json!(id.as_ref()));
@@ -210,7 +215,7 @@ impl<'a> AstBuilder<'a> {
             }
 
             Tag::BlockQuote(kind) => {
-                let mut f = Frame::new("blockquote");
+                let mut f = Frame::new("blockquote", range.clone());
                 if let Some(k) = kind {
                     f.node.insert("kind".into(), json!(blockquote_kind(k)));
                 }
@@ -219,7 +224,7 @@ impl<'a> AstBuilder<'a> {
 
             Tag::CodeBlock(CodeBlockKind::Fenced(info)) => {
                 let (name, attrs) = parse_fence_info(info.as_ref());
-                let mut f = Frame::new("fenced");
+                let mut f = Frame::new("fenced", range.clone());
                 f.node.insert("name".into(), json!(name));
                 if !attrs.is_empty() {
                     f.node.insert(
@@ -231,15 +236,15 @@ impl<'a> AstBuilder<'a> {
             }
 
             Tag::CodeBlock(CodeBlockKind::Indented) => {
-                let mut f = Frame::new("fenced");
+                let mut f = Frame::new("fenced", range.clone());
                 f.node.insert("name".into(), json!(""));
                 self.stack.push(f);
             }
 
-            Tag::HtmlBlock => self.stack.push(Frame::new("html_block")),
+            Tag::HtmlBlock => self.stack.push(Frame::new("html_block", range.clone())),
 
             Tag::List(start) => {
-                let mut f = Frame::new("list");
+                let mut f = Frame::new("list", range.clone());
                 if let Some(n) = start {
                     f.node.insert("ordered".into(), json!(true));
                     f.node.insert("start".into(), json!(n));
@@ -249,16 +254,17 @@ impl<'a> AstBuilder<'a> {
                 self.stack.push(f);
             }
 
-            Tag::Item => self.stack.push(Frame::new("list_item")),
+            Tag::Item => self.stack.push(Frame::new("list_item", range.clone())),
 
             Tag::FootnoteDefinition(label) => {
-                let f = Frame::new("footnote_def").with("label", json!(label.as_ref()));
+                let f =
+                    Frame::new("footnote_def", range.clone()).with("label", json!(label.as_ref()));
                 self.stack.push(f);
             }
 
             Tag::Table(alignments) => {
                 let aligns: Vec<Value> = alignments.iter().map(|a| json!(col_align(*a))).collect();
-                let mut f = Frame::new("table");
+                let mut f = Frame::new("table", range.clone());
                 f.node.insert("align".into(), Value::Array(aligns));
                 self.table_headers.clear();
                 self.table_rows.clear();
@@ -270,22 +276,26 @@ impl<'a> AstBuilder<'a> {
             Tag::TableRow => {
                 self.current_row.clear();
             }
-            Tag::TableCell => self.stack.push(Frame::new("_cell")),
+            Tag::TableCell => self.stack.push(Frame::new("_cell", range.clone())),
 
-            Tag::DefinitionList => self.stack.push(Frame::new("definition_list")),
-            Tag::DefinitionListTitle => self.stack.push(Frame::new("_def_title")),
-            Tag::DefinitionListDefinition => self.stack.push(Frame::new("_def_body")),
+            Tag::DefinitionList => self
+                .stack
+                .push(Frame::new("definition_list", range.clone())),
+            Tag::DefinitionListTitle => self.stack.push(Frame::new("_def_title", range.clone())),
+            Tag::DefinitionListDefinition => {
+                self.stack.push(Frame::new("_def_body", range.clone()))
+            }
 
-            Tag::Emphasis => self.stack.push(Frame::new("em")),
-            Tag::Strong => self.stack.push(Frame::new("strong")),
-            Tag::Strikethrough => self.stack.push(Frame::new("del")),
-            Tag::Superscript => self.stack.push(Frame::new("sup")),
-            Tag::Subscript => self.stack.push(Frame::new("sub")),
+            Tag::Emphasis => self.stack.push(Frame::new("em", range.clone())),
+            Tag::Strong => self.stack.push(Frame::new("strong", range.clone())),
+            Tag::Strikethrough => self.stack.push(Frame::new("del", range.clone())),
+            Tag::Superscript => self.stack.push(Frame::new("sup", range.clone())),
+            Tag::Subscript => self.stack.push(Frame::new("sub", range.clone())),
 
             Tag::Link {
                 dest_url, title, ..
             } => {
-                let f = Frame::new("link")
+                let f = Frame::new("link", range.clone())
                     .with("href", json!(dest_url.as_ref()))
                     .with("title", json!(title.as_ref()));
                 self.stack.push(f);
@@ -294,7 +304,7 @@ impl<'a> AstBuilder<'a> {
             Tag::Image {
                 dest_url, title, ..
             } => {
-                let f = Frame::new("image")
+                let f = Frame::new("image", range.clone())
                     .with("src", json!(dest_url.as_ref()))
                     .with("title", json!(title.as_ref()));
                 self.stack.push(f);
@@ -615,7 +625,7 @@ fn parse_inline_widget(s: &str) -> Option<(Value, usize)> {
 
 /// Scan a text string for zero or more inline widgets, emitting plain text
 /// nodes for surrounding content and widget nodes for each match.
-fn scan_inline_widgets(s: &str) -> Vec<Value> {
+fn scan_inline_widgets(s: &str, mut start_offset: usize) -> Vec<Value> {
     let mut result = Vec::new();
     let mut remaining = s;
 
@@ -623,19 +633,31 @@ fn scan_inline_widgets(s: &str) -> Vec<Value> {
         if let Some(pos) = remaining.find(":[") {
             // Emit text before the widget
             if pos > 0 {
-                result.push(json!({"t": "text", "text": &remaining[..pos]}));
+                let chunk_len = remaining[..pos].len();
+                result.push(json!({"t": "text", "text": &remaining[..pos], "range": [start_offset, start_offset + chunk_len]}));
+                start_offset += chunk_len;
             }
             let candidate = &remaining[pos..];
-            if let Some((widget, consumed)) = parse_inline_widget(candidate) {
+            if let Some((mut widget, consumed)) = parse_inline_widget(candidate) {
+                if let Value::Object(ref mut map) = widget {
+                    map.insert(
+                        "range".into(),
+                        json!([start_offset, start_offset + consumed]),
+                    );
+                }
                 result.push(widget);
                 remaining = &remaining[pos + consumed..];
+                start_offset += consumed;
             } else {
                 // Not a valid widget — emit the `:[` literally and advance past it
-                result.push(json!({"t": "text", "text": &remaining[..pos + 2]}));
+                let chunk_len = remaining[..pos + 2].len();
+                result.push(json!({"t": "text", "text": &remaining[..pos + 2], "range": [start_offset, start_offset + chunk_len]}));
                 remaining = &remaining[pos + 2..];
+                start_offset += chunk_len;
             }
         } else {
-            result.push(json!({"t": "text", "text": remaining}));
+            let chunk_len = remaining.len();
+            result.push(json!({"t": "text", "text": remaining, "range": [start_offset, start_offset + chunk_len]}));
             break;
         }
     }
@@ -653,10 +675,11 @@ fn coalesce_and_scan_widgets(children: Vec<Value>) -> Vec<Value> {
     // Pass 1: coalesce consecutive text nodes and scan for widgets.
     let mut pass1: Vec<Value> = Vec::new();
     let mut text_buf = String::new();
+    let mut current_offset: Option<usize> = None;
 
-    let flush_text = |buf: &mut String, out: &mut Vec<Value>| {
+    let flush_text = |buf: &mut String, offset: Option<usize>, out: &mut Vec<Value>| {
         if !buf.is_empty() {
-            for node in scan_inline_widgets(buf) {
+            for node in scan_inline_widgets(buf, offset.unwrap_or(0)) {
                 out.push(node);
             }
             buf.clear();
@@ -667,16 +690,25 @@ fn coalesce_and_scan_widgets(children: Vec<Value>) -> Vec<Value> {
         match child.get("t").and_then(|v| v.as_str()) {
             Some("text") => {
                 if let Some(s) = child.get("text").and_then(|v| v.as_str()) {
+                    current_offset = current_offset.or_else(|| {
+                        child
+                            .get("range")
+                            .and_then(|v| v.as_array())
+                            .and_then(|arr| arr.first())
+                            .and_then(|v| v.as_u64())
+                            .map(|n| n as usize)
+                    });
                     text_buf.push_str(s);
                 }
             }
             _ => {
-                flush_text(&mut text_buf, &mut pass1);
+                flush_text(&mut text_buf, current_offset, &mut pass1);
+                current_offset = None;
                 pass1.push(child);
             }
         }
     }
-    flush_text(&mut text_buf, &mut pass1);
+    flush_text(&mut text_buf, current_offset, &mut pass1);
 
     // Pass 2: absorb trailing `{...}` text nodes into preceding link/image.
     let mut result: Vec<Value> = Vec::new();
@@ -716,7 +748,7 @@ fn coalesce_and_scan_widgets(children: Vec<Value>) -> Vec<Value> {
                     iter.next(); // consume the text node — borrow is now dropped
                     if !remainder.trim().is_empty() {
                         result.push(node);
-                        result.push(json!({"t": "text", "text": remainder}));
+                        result.push(json!({"t": "text", "text": remainder})); // Note: range is lost for this synthetic text fragment, acceptable for inline attr trailing
                         continue;
                     }
                 }

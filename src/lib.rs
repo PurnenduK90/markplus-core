@@ -36,12 +36,34 @@
 //! ```
 
 pub mod ast;
+#[cfg(not(target_arch = "wasm32"))]
+/// Source code parsing logic converting code strings into fenced AST nodes.
+pub mod code;
 pub mod config;
+#[cfg(not(target_arch = "wasm32"))]
+/// CSV parsing logic converting flat csv lines into table AST nodes.
+pub mod csv;
 pub mod event_filter;
 pub mod json;
+#[cfg(not(target_arch = "wasm32"))]
+/// Mermaid logic converting .mmd definitions to SVG renderable fenced nodes.
+pub mod mermaid;
 
 use json::SiteAsset;
 use serde_json::Value;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use json::{read_and_validate_asset, read_asset_json, validate_asset_json_str};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use csv::{CsvReadOptions, read_csv_as_table_ast};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use code::{is_known_code_extension, parse_code_to_fenced_ast, read_code_as_fenced_ast};
+#[cfg(not(target_arch = "wasm32"))]
+pub use json::{parse_json_data_to_ast, read_json_data_as_ast};
+#[cfg(not(target_arch = "wasm32"))]
+pub use mermaid::{parse_mermaid_to_fenced_ast, read_mermaid_as_fenced_ast};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -209,7 +231,8 @@ $$
     #[test]
     fn parse_document_extracts_meta() {
         let asset = parse_document(FULL_DOC).unwrap();
-        assert_eq!(asset.schema, SiteAsset::SCHEMA_VERSION);
+        assert_eq!(asset.schema.major, SiteAsset::SCHEMA_MAJOR);
+        assert_eq!(asset.schema.minor, SiteAsset::SCHEMA_MINOR);
         assert_eq!(
             asset.meta,
             Some(json!({
@@ -308,7 +331,8 @@ $$
     fn site_asset_serializes_with_schema_version() {
         let asset = parse_document(FULL_DOC).unwrap();
         let json: Value = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
-        assert_eq!(json["schema"], SiteAsset::SCHEMA_VERSION);
+        assert_eq!(json["schema"]["major"], SiteAsset::SCHEMA_MAJOR);
+        assert_eq!(json["schema"]["minor"], SiteAsset::SCHEMA_MINOR);
         assert!(json["ast"].is_array());
     }
 
@@ -571,7 +595,8 @@ $$
 
     #[test]
     fn site_asset_schema_version_is_1() {
-        assert_eq!(SiteAsset::SCHEMA_VERSION, 1);
+        assert_eq!(SiteAsset::SCHEMA_MAJOR, 1);
+        assert_eq!(SiteAsset::SCHEMA_MINOR, 1);
     }
 
     #[test]
@@ -580,26 +605,36 @@ $$
         let round_trip: SiteAsset = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
         assert_eq!(round_trip, asset);
     }
-}
 
-// ---------------------------------------------------------------------------
-// Documentation
-// ---------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Re-export tests for native validators at crate root
+    // -----------------------------------------------------------------------
 
-/// Comprehensive guides and references.
-pub mod docs {
-    /// Full usage instructions for the CLI and API.
-    pub mod usage {
-        #![doc = include_str!("../docs/usage.md")]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn crate_root_and_module_validate_agree() {
+        let asset = crate::json::SiteAsset::new(None, vec![]);
+        let s = asset.to_json().unwrap();
+        // crate root re-export
+        assert!(crate::validate_asset_json_str(&s).is_ok());
+        // module function
+        assert!(crate::json::validate_asset_json_str(&s).is_ok());
     }
-    /// Complete reference for the AST node structures.
-    pub mod ast_reference {
-        #![doc = include_str!("../docs/ast-reference.md")]
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn crate_root_read_and_validate_errs_on_bad_file() {
+        let mut path = std::env::temp_dir();
+        path.push("markplus_core_nonexistent_reexport_123.json");
+        let res = crate::read_and_validate_asset(&path);
+        assert!(res.is_err());
     }
-    /// The formal JSON Schema for the MarkPlus AST.
-    pub mod schema {
-        #![doc = "```json\n"]
-        #![doc = include_str!("../schema/markplus-ast.v1.schema.json")]
-        #![doc = "\n```"]
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn crate_root_validate_rejects_invalid_json() {
+        let bad = "{ not json }";
+        let res = crate::validate_asset_json_str(bad);
+        assert!(res.is_err());
     }
 }

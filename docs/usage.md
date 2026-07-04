@@ -21,7 +21,7 @@ cargo build --release
 
 ### Usage
 
-```
+```text
 mpc [--pretty] <file.md>
 mpc --help
 ```
@@ -91,6 +91,49 @@ fn deploy(path: &str) -> Result<(), CompileError> {
 }
 ```
 
+### Native: JSON validation helpers
+
+Native-only helpers exist under the `markplus_core::json` module to perform
+lightweight validation of `note.json` assets and to read-and-validate a JSON
+asset file.
+
+```rust
+// Native-only example (not compiled in doctests)
+use std::path::Path;
+use markplus_core::json;
+
+let path = Path::new("dist/note.json");
+let s = std::fs::read_to_string(path).expect("read failed");
+json::validate_asset_json_str(&s).expect("schema validation failed");
+let asset = json::read_and_validate_asset(path).expect("read+validate failed");
+println!("schema = {}", asset.schema);
+```
+
+### Native: CSV → table AST helper
+
+A convenience native-only helper parses CSV files into a `table` AST node
+compatible with the MarkPlus AST (useful for ingesting spreadsheets).
+
+API (native-only):
+
+- markplus_core::csv::CsvReadOptions — configure start-line, header, row/col ranges
+- markplus_core::csv::read_csv_as_table_ast(path, &opts) -> serde_json::Value
+- markplus_core::csv::parse_csv_to_table_ast_str(csv_text, &opts) -> serde_json::Value
+
+Example:
+
+```rust
+use std::path::Path;
+use markplus_core::csv::{CsvReadOptions, read_csv_as_table_ast};
+
+let path = Path::new("data/table.csv");
+let opts = CsvReadOptions { header: true, ..Default::default() };
+let table = read_csv_as_table_ast(path, &opts).expect("csv->table failed");
+// `table` is a serde_json::Value representing a node like:
+// { "t":"table", "align": [..], "headers": [...], "rows": [[...]] }
+println!("columns = {}", table["headers"].as_array().map(|a| a.len()).unwrap_or(0));
+```
+
 ### `parse_body` — pre-stripped body only
 
 Use this for **live editor preview** when the caller already holds the raw
@@ -126,7 +169,7 @@ match parse_document(&raw) {
 
 ### Data pipeline — Tauri deploy pass
 
-```
+```text
 Raw .md file
     │
     ├─ parse_document()
@@ -197,7 +240,7 @@ const site = JSON.parse(parse_document_to_json(rawMarkdownText));
 
 ## 4. Architecture overview
 
-```
+```text
 markplus_core  (this crate)
 │
 ├── Parses Markdown → AST JSON
@@ -209,16 +252,13 @@ markplus_core  (this crate)
     └── [wasm] parse_to_ast()
         [wasm] parse_document_to_json()
 
-markplus_render_html  (separate crate / your code)
+markplus_render  (separate crate — see markplus-render/docs/usage.md)
 │
-└── Consumes AST JSON → HTML string
-    ├── Reads "t" field to dispatch node type
-    ├── Handles "fenced" nodes by name (mermaid, simby, a2ui, ...)
-    └── Falls back to <pre><code> for unknown names
-
-markplus_render_typst  (separate crate / your code)
-│
-└── Consumes AST JSON → Typst markup string
+└── Consumes AST JSON → HTML string, Typst source, or PDF bytes
+    ├── render_html(asset, template)         → HTML string
+    ├── render_typst_string(asset, template) → .typ source string
+    ├── compile_pdf(typst_src)               → PDF bytes (native + wasm)
+    └── render_to_file(asset, template, path) → writes .html / .typ / .pdf
 ```
 
 The design rule: **`markplus_core` never knows about renderers or plugins**.

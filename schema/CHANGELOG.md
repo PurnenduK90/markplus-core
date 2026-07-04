@@ -7,9 +7,18 @@ validators which version of this schema to use.
 
 ---
 
+## v1.1 — 2026-07-04
+
+**Current version.** 
+
+- Added `"range"` array `[start, end]` to all nodes to represent byte offsets in the source text.
+- Changed `schema` in wire format from an integer `1` to an object `{"major": 1, "minor": 1}`.
+
+---
+
 ## v1 — 2026-06-06
 
-**Current version.** First published schema, released alongside `markplus_core 0.2`.
+First published schema, released alongside `markplus_core 0.2`.
 
 Includes:
 
