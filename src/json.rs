@@ -130,7 +130,7 @@ pub fn validate_asset_json_value(v: &serde_json::Value) -> Result<(), Vec<String
     match obj.get("schema") {
         Some(Value::Object(sv)) => {
             let major = sv.get("major").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let minor = sv.get("minor").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let _minor = sv.get("minor").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
             if major != SiteAsset::SCHEMA_MAJOR {
                 errs.push(format!(
                     "unexpected schema major version: {} (expected {})",

@@ -690,13 +690,14 @@ fn coalesce_and_scan_widgets(children: Vec<Value>) -> Vec<Value> {
         match child.get("t").and_then(|v| v.as_str()) {
             Some("text") => {
                 if let Some(s) = child.get("text").and_then(|v| v.as_str()) {
-                    if current_offset.is_none() {
-                        if let Some(arr) = child.get("range").and_then(|v| v.as_array()) {
-                            if let Some(n) = arr.get(0).and_then(|v| v.as_u64()) {
-                                current_offset = Some(n as usize);
-                            }
-                        }
-                    }
+                    current_offset = current_offset.or_else(|| {
+                        child
+                            .get("range")
+                            .and_then(|v| v.as_array())
+                            .and_then(|arr| arr.first())
+                            .and_then(|v| v.as_u64())
+                            .map(|n| n as usize)
+                    });
                     text_buf.push_str(s);
                 }
             }
