@@ -126,7 +126,7 @@ See [`docs/ast-reference.md`](docs/ast-reference.md) for the full AST node schem
 
 ## Schema
 
-The file [`schema/markplus-ast.v1.1.schema.json`](schema/markplus-ast.v1.1.schema.json)
+The file [`schema/markplus-ast.v1.2.schema.json`](schema/markplus-ast.v1.2.schema.json)
 is a **JSON Schema 2020-12** document that formally defines every node type in the AST.
 
 It is the **source of truth** for both `markplus_core` (producer) and all downstream
@@ -142,7 +142,7 @@ mpc note.md | python -c "
 import sys, json
 from jsonschema import validate
 ast = json.loads(sys.stdin.read())
-schema = json.load(open('schema/markplus-ast.v1.1.schema.json'))
+schema = json.load(open('schema/markplus-ast.v1.2.schema.json'))
 validate(instance=ast, schema=schema)
 print('valid')
 "
@@ -156,5 +156,5 @@ See [`schema/CHANGELOG.md`](schema/CHANGELOG.md) for the schema versioning polic
 
 - [`docs/usage.md`](docs/usage.md) — detailed API and CLI usage
 - [`docs/ast-reference.md`](docs/ast-reference.md) — every Markdown construct mapped to its AST node
-- [`schema/markplus-ast.v1.1.schema.json`](schema/markplus-ast.v1.1.schema.json) — formal JSON Schema (machine-readable)
+- [`schema/markplus-ast.v1.2.schema.json`](schema/markplus-ast.v1.2.schema.json) — formal JSON Schema (machine-readable)
 - [`schema/CHANGELOG.md`](schema/CHANGELOG.md) — schema versioning history and breaking-change policy

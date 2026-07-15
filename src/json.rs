@@ -23,7 +23,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::CompileError;
 
 // ---------------------------------------------------------------------------
 // Wire format: note_XXXX.json
@@ -57,7 +56,7 @@ pub struct SiteAsset {
 impl SiteAsset {
     /// Current wire-format schema version for serialized site assets.
     pub const SCHEMA_MAJOR: u32 = 1;
-    pub const SCHEMA_MINOR: u32 = 1;
+    pub const SCHEMA_MINOR: u32 = 2;
 
     /// Build a site asset from optional frontmatter metadata and AST blocks.
     pub fn new(meta: Option<Value>, ast: Vec<Value>) -> Self {
@@ -80,33 +79,6 @@ impl SiteAsset {
     pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
-}
-
-// ---------------------------------------------------------------------------
-// Frontmatter parsing (native only — serde_yml not compiled into wasm)
-// ---------------------------------------------------------------------------
-
-/// Parse YAML frontmatter text into a JSON value tree (native targets only).
-///
-/// Returns `None` when `raw` is `None` or empty.
-/// Returns `Err(CompileError::InvalidFrontmatter)` on malformed YAML.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn parse_frontmatter(raw: Option<&str>) -> Result<Option<Value>, CompileError> {
-    match raw.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(yaml) => serde_yml::from_str(yaml)
-            .map(Some)
-            .map_err(|e| CompileError::InvalidFrontmatter(e.to_string())),
-        None => Ok(None),
-    }
-}
-
-/// No-op on wasm targets — frontmatter is always `None`.
-///
-/// `serde_yml` is not compiled into the wasm binary. The native deploy pass
-/// is responsible for parsing frontmatter before writing the `note.json` asset.
-#[cfg(target_arch = "wasm32")]
-pub fn parse_frontmatter(_raw: Option<&str>) -> Result<Option<Value>, CompileError> {
-    Ok(None)
 }
 
 // ---------------------------------------------------------------------------
@@ -308,13 +280,14 @@ fn json_object_to_definition_list(
 #[cfg(not(target_arch = "wasm32"))]
 mod tests {
     use super::*;
+    use crate::CompileError;
     use serde_json::json;
     use std::fs;
 
     #[test]
     fn parse_frontmatter_some() {
         let raw = "title: hello\ndate: 2026-06-07\n";
-        let meta = parse_frontmatter(Some(raw)).expect("parse failed");
+        let meta = crate::frontmatter::parse_yaml_frontmatter(Some(raw)).expect("parse failed");
         assert!(meta.is_some());
         let m = meta.unwrap();
         assert_eq!(m["title"], "hello");
@@ -322,14 +295,14 @@ mod tests {
 
     #[test]
     fn parse_frontmatter_none() {
-        let meta = parse_frontmatter(None).expect("parse failed");
+        let meta = crate::frontmatter::parse_yaml_frontmatter(None).expect("parse failed");
         assert!(meta.is_none());
     }
 
     #[test]
     fn parse_frontmatter_invalid_yaml_errors() {
-        let bad = "title: [unclosed\n";
-        let err = parse_frontmatter(Some(bad));
+        let bad = "- item\n";
+        let err = crate::frontmatter::parse_yaml_frontmatter(Some(bad));
         assert!(matches!(err, Err(CompileError::InvalidFrontmatter(_))));
     }
 

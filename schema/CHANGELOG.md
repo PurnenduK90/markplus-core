@@ -7,9 +7,16 @@ validators which version of this schema to use.
 
 ---
 
-## v1.1 — 2026-07-04
+## v1.2 — 2026-07-16
 
-**Current version.** 
+**Current version.**
+
+- Added `directive` block node for custom block extensions (`:::name {key=val}` syntax).
+- Removed `soft_break` inline node (soft breaks are now safely coalesced into `text` nodes).
+
+---
+
+## v1.1 — 2026-07-04
 
 - Added `"range"` array `[start, end]` to all nodes to represent byte offsets in the source text.
 - Changed `schema` in wire format from an integer `1` to an object `{"major": 1, "minor": 1}`.

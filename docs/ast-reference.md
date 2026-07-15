@@ -21,6 +21,7 @@ All nodes are produced by `markplus_core::parse_document()` or
 | `list_item` | block (child of list) | each item |
 | `table` | block | GFM table |
 | `definition_list` | block | GFM definition list |
+| `directive` | block | `:::name {attrs}` |
 | `hr` | block | `---` / `***` |
 | `html_block` | block | raw HTML block |
 | `footnote_def` | block | `[^label]: …` |
@@ -39,7 +40,6 @@ All nodes are produced by `markplus_core::parse_document()` or
 | `widget` | inline | `:[text]{name …}` |
 | `footnote_ref` | inline | `[^label]` |
 | `task_marker` | inline | `[ ]` / `[x]` |
-| `soft_break` | inline | line break (no `\`) |
 | `hard_break` | inline | `  \n` or `\` + newline |
 
 ---
@@ -288,6 +288,33 @@ Term
   ]
 }
 ```
+
+---
+
+### `directive`
+
+Custom MarkPlus block extension.
+
+```markdown
+:::callout {type="warning"}
+This is a warning block.
+:::
+```
+
+```json
+{
+  "t": "directive",
+  "name": "callout",
+  "attrs": { "type": "warning" },
+  "children": [
+    { "t": "paragraph", "children": [{ "t": "text", "text": "This is a warning block." }] }
+  ]
+}
+```
+
+Syntax: `:::name {key=val}` ... `:::` or `:::/name`. 
+
+Fields: `name`, `attrs`, `children` (block array).
 
 ---
 
@@ -577,15 +604,7 @@ Emitted as the first inline child of a task-list item paragraph.
 { "t": "task_marker", "checked": false }
 ```
 
----
 
-### `soft_break`
-
-A line break that is not a hard break (no trailing spaces or `\`).
-
-```json
-{ "t": "soft_break" }
-```
 
 ---
 
@@ -624,7 +643,7 @@ The `SiteAsset` produced by `parse_document()` and serialised to `note.json`:
 
 ```json
 {
-  "schema": 1,
+  "schema": { "major": 1, "minor": 2 },
   "meta": {
     "title": "RFSoC Mixer Design Notes",
     "category": "hardware",
@@ -636,12 +655,12 @@ The `SiteAsset` produced by `parse_document()` and serialised to `note.json`:
 }
 ```
 
-- `schema` — integer, bumped on breaking AST shape changes. Current: **1**.
+- `schema` — object with `major` and `minor` integer fields. Current: **1.2**.
 - `meta` — `null` if no frontmatter; otherwise the YAML document deserialised into a JSON value tree.
 - `ast` — array of block nodes as described in this document.
 
 Renderers should guard on `schema`:
 
 ```js
-if (site.schema !== 1) throw new Error(`Unsupported AST schema ${site.schema}`);
+if (site.schema.major !== 1) throw new Error(`Unsupported AST schema ${site.schema.major}`);
 ```
