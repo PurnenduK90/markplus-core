@@ -1,0 +1,846 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://markplus.dev/schema/v1.2/markplus-ast.schema.json",
+  "title": "MarkPlus AST v1.2",
+  "description": "Schema for the MarkPlus AST produced by markplus_core::parse_document() and parse_body(). The 't' field is the node type discriminant throughout the tree.",
+
+  "$defs": {
+
+    "AttrsMap": {
+      "description": "Key-value attribute pairs. Values are strings or booleans (bare flags become true).",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "boolean" }
+        ]
+      }
+    },
+
+    "InlineNode": {
+      "description": "Any node that appears inside a block's 'children' array.",
+      "oneOf": [
+        { "$ref": "#/$defs/TextNode" },
+        { "$ref": "#/$defs/EmNode" },
+        { "$ref": "#/$defs/StrongNode" },
+        { "$ref": "#/$defs/DelNode" },
+        { "$ref": "#/$defs/SupNode" },
+        { "$ref": "#/$defs/SubNode" },
+        { "$ref": "#/$defs/CodeSpanNode" },
+        { "$ref": "#/$defs/MathInlineNode" },
+        { "$ref": "#/$defs/LinkNode" },
+        { "$ref": "#/$defs/ImageNode" },
+        { "$ref": "#/$defs/WidgetNode" },
+        { "$ref": "#/$defs/FootnoteRefNode" },
+        { "$ref": "#/$defs/TaskMarkerNode" },
+        { "$ref": "#/$defs/HardBreakNode" },
+        { "$ref": "#/$defs/RawHtmlNode" }
+      ]
+    },
+
+    "BlockNode": {
+      "description": "Any node that appears at the top level of the 'ast' array or nested inside a container block.",
+      "oneOf": [
+        { "$ref": "#/$defs/HeadingNode" },
+        { "$ref": "#/$defs/ParagraphNode" },
+        { "$ref": "#/$defs/FencedNode" },
+        { "$ref": "#/$defs/DirectiveNode" },
+        { "$ref": "#/$defs/BlockquoteNode" },
+        { "$ref": "#/$defs/ListNode" },
+        { "$ref": "#/$defs/TableNode" },
+        { "$ref": "#/$defs/DefinitionListNode" },
+        { "$ref": "#/$defs/HrNode" },
+        { "$ref": "#/$defs/HtmlBlockNode" },
+        { "$ref": "#/$defs/FootnoteDefNode" },
+        { "$ref": "#/$defs/MathBlockNode" },
+        { "$ref": "#/$defs/RawHtmlNode" }
+      ]
+    },
+
+    "CellNode": {
+      "description": "A table cell — internal node, only appears inside table 'headers' and 'rows'.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "_cell" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "DefTitleNode": {
+      "description": "A definition list title term.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "_def_title" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "DefBodyNode": {
+      "description": "A definition list definition body.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "_def_body" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "HeadingNode": {
+      "description": "A heading (# to ######). Optional 'id', 'classes', and 'attrs' from heading attribute syntax.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "heading" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Heading depth: 1 = h1, 6 = h6."
+        },
+        "id": {
+          "type": "string",
+          "description": "Optional heading ID from '{ #my-id }' syntax."
+        },
+        "classes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional CSS classes from '{ .class1 .class2 }' syntax."
+        },
+        "attrs": {
+          "$ref": "#/$defs/AttrsMap",
+          "description": "Optional custom attributes from '{ key=val }' syntax."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" },
+          "description": "Inline content of the heading."
+        }
+      },
+      "required": ["t", "level", "children"],
+      "additionalProperties": false
+    },
+
+    "ParagraphNode": {
+      "description": "A paragraph of inline content.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "paragraph" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "FencedNode": {
+      "description": "A fenced or indented code block. All fenced blocks share this shape — the renderer decides whether 'name' means syntax highlight, diagram, or plugin.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "fenced" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "name": {
+          "type": "string",
+          "description": "The info string first token (e.g. 'python', 'mermaid', 'simby'). Empty string for indented blocks or unlabelled fences."
+        },
+        "attrs": {
+          "$ref": "#/$defs/AttrsMap",
+          "description": "Key-value attributes parsed from the remainder of the info string. Absent when empty."
+        },
+        "raw": {
+          "type": "string",
+          "description": "Raw block content with trailing whitespace trimmed."
+        }
+      },
+      "required": ["t", "name", "raw"],
+      "additionalProperties": false
+    },
+
+    "BlockquoteNode": {
+      "description": "A blockquote (>) or GFM alert (> [!NOTE], > [!WARNING], etc.).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "blockquote" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["note", "tip", "important", "warning", "caution"],
+          "description": "GFM alert kind. Absent for regular blockquotes."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/BlockNode" },
+          "description": "Block-level content of the quote."
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "ListItemNode": {
+      "description": "A single list item. In loose lists, children are block-level nodes (paragraphs, nested lists). In tight lists, children are inline nodes directly (no wrapping paragraph).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "list_item" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/BlockNode" },
+              { "$ref": "#/$defs/InlineNode" }
+            ]
+          }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "ListNode": {
+      "description": "An ordered or unordered list.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "list" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "ordered": {
+          "type": "boolean",
+          "description": "true for ordered (1. 2. 3.), false for unordered (- *)."
+        },
+        "start": {
+          "type": "integer",
+          "description": "Starting number for ordered lists. Absent for unordered lists."
+        },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ListItemNode" }
+        }
+      },
+      "required": ["t", "ordered", "items"],
+      "additionalProperties": false
+    },
+
+    "TableNode": {
+      "description": "A GFM table.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "table" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "align": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["left", "right", "center", "none"]
+          },
+          "description": "Column alignment, one entry per column."
+        },
+        "headers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CellNode" },
+          "description": "Header row cells."
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/CellNode" }
+          },
+          "description": "Body rows, each row is an array of cells."
+        }
+      },
+      "required": ["t", "align", "headers", "rows"],
+      "additionalProperties": false
+    },
+
+    "DefinitionListNode": {
+      "description": "A GFM definition list (term + one or more definitions).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "definition_list" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/DefTitleNode" },
+              { "$ref": "#/$defs/DefBodyNode" }
+            ]
+          },
+          "description": "Alternating title and body nodes."
+        }
+      },
+      "required": ["t", "items"],
+      "additionalProperties": false
+    },
+
+    "HrNode": {
+      "description": "A thematic break (---, ***, ___).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "hr" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        }
+      },
+      "required": ["t"],
+      "additionalProperties": false
+    },
+
+    "HtmlBlockNode": {
+      "description": "A raw HTML block element.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "html_block" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "html": {
+          "type": "string",
+          "description": "Raw HTML string including newlines."
+        }
+      },
+      "required": ["t", "html"],
+      "additionalProperties": false
+    },
+
+    "FootnoteDefNode": {
+      "description": "A footnote definition ([^label]: body).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "footnote_def" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "label": {
+          "type": "string",
+          "description": "The footnote label (the part inside [^...])."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/BlockNode" }
+        }
+      },
+      "required": ["t", "label", "children"],
+      "additionalProperties": false
+    },
+
+    "MathBlockNode": {
+      "description": "A display math block ($$...$$).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "math_block" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "src": {
+          "type": "string",
+          "description": "Raw LaTeX source, as emitted by the parser."
+        }
+      },
+      "required": ["t", "src"],
+      "additionalProperties": false
+    },
+
+    "TextNode": {
+      "description": "Plain text content.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "text" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "text": { "type": "string" }
+      },
+      "required": ["t", "text"],
+      "additionalProperties": false
+    },
+
+    "EmNode": {
+      "description": "Emphasis (*text* or _text_).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "em" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "StrongNode": {
+      "description": "Strong emphasis (**text** or __text__).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "strong" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "DelNode": {
+      "description": "Strikethrough (~~text~~).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "del" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "SupNode": {
+      "description": "Superscript (^text^).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "sup" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "SubNode": {
+      "description": "Subscript (~text~).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "sub" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" }
+        }
+      },
+      "required": ["t", "children"],
+      "additionalProperties": false
+    },
+
+    "CodeSpanNode": {
+      "description": "An inline code span (`code`).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "code_span" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "text": {
+          "type": "string",
+          "description": "The code content, backticks stripped."
+        }
+      },
+      "required": ["t", "text"],
+      "additionalProperties": false
+    },
+
+    "MathInlineNode": {
+      "description": "Inline math ($formula$).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "math_inline" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "src": {
+          "type": "string",
+          "description": "Raw LaTeX source."
+        }
+      },
+      "required": ["t", "src"],
+      "additionalProperties": false
+    },
+
+    "LinkNode": {
+      "description": "An inline hyperlink [text](url). Optional '{attrs}' block absorbed into 'attrs'.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "link" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "href": {
+          "type": "string",
+          "description": "Destination URL."
+        },
+        "title": {
+          "type": "string",
+          "description": "Optional link title (from '\"title\"' in the URL parens). Empty string when absent."
+        },
+        "attrs": {
+          "$ref": "#/$defs/AttrsMap",
+          "description": "Extra attributes from trailing '{key=val}' block. Absent when no block given."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" },
+          "description": "The link label inline content."
+        }
+      },
+      "required": ["t", "href", "title", "children"],
+      "additionalProperties": false
+    },
+
+    "ImageNode": {
+      "description": "An inline image ![alt](src). Optional '{attrs}' block absorbed into 'attrs'.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "image" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "src": {
+          "type": "string",
+          "description": "Image source URL."
+        },
+        "title": {
+          "type": "string",
+          "description": "Optional image title. Empty string when absent."
+        },
+        "attrs": {
+          "$ref": "#/$defs/AttrsMap",
+          "description": "Extra attributes from trailing '{key=val}' block. Absent when no block given."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InlineNode" },
+          "description": "Alt text inline content."
+        }
+      },
+      "required": ["t", "src", "title", "children"],
+      "additionalProperties": false
+    },
+
+    "WidgetNode": {
+      "description": "A MarkPlus inline extension widget: :[text]{name key=value ...}",
+      "type": "object",
+      "properties": {
+        "t": { "const": "widget" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "name": {
+          "type": "string",
+          "description": "Widget type identifier (first token in the brace block)."
+        },
+        "text": {
+          "type": "string",
+          "description": "The visible text content (inside the square brackets)."
+        },
+        "attrs": {
+          "$ref": "#/$defs/AttrsMap",
+          "description": "Widget parameters parsed from the brace block."
+        }
+      },
+      "required": ["t", "name", "text", "attrs"],
+      "additionalProperties": false
+    },
+
+    "FootnoteRefNode": {
+      "description": "A footnote reference ([^label]).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "footnote_ref" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "label": {
+          "type": "string",
+          "description": "The footnote label being referenced."
+        }
+      },
+      "required": ["t", "label"],
+      "additionalProperties": false
+    },
+
+    "TaskMarkerNode": {
+      "description": "A task list checkbox marker ([ ] or [x]). Always the first inline child of a task list item paragraph.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "task_marker" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "checked": {
+          "type": "boolean",
+          "description": "true when the box is checked ([x])."
+        }
+      },
+      "required": ["t", "checked"],
+      "additionalProperties": false
+    },
+
+    "HardBreakNode": {
+      "description": "A hard line break (two trailing spaces or backslash before newline).",
+      "type": "object",
+      "properties": {
+        "t": { "const": "hard_break" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        }
+      },
+      "required": ["t"],
+      "additionalProperties": false
+    },
+
+    "RawHtmlNode": {
+      "description": "A raw HTML node. Appears as a block when at document root, inline otherwise.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "raw_html" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the source markdown."
+        },
+        "html": {
+          "type": "string",
+          "description": "The raw HTML string."
+        }
+      },
+      "required": ["t", "html"],
+      "additionalProperties": false
+    },
+
+    "DirectiveNode": {
+      "description": "A MarkPlus block directive container (:::name … :::/name or :::). Body is parsed as full Markdown and stored as block children. Use for tabs, columns, callouts, cards, and other container layouts.",
+      "type": "object",
+      "properties": {
+        "t": { "const": "directive" },
+        "range": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Byte offsets [start, end] in the original source markdown."
+        },
+        "name": {
+          "type": "string",
+          "description": "First token of the opening info string (e.g. 'tabs', 'note', 'col'). Never empty."
+        },
+        "attrs": {
+          "$ref": "#/$defs/AttrsMap",
+          "description": "Key-value attributes from the remainder of the opening info string. Absent when no attributes given."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/BlockNode" },
+          "description": "Parsed body block nodes. May be empty for an empty directive."
+        }
+      },
+      "required": ["t", "name", "children"],
+      "additionalProperties": false
+    }
+  },
+
+  "type": "object",
+  "description": "The top-level MarkPlus site asset (note.json wire format).",
+  "properties": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "major": { "type": "integer", "const": 1 },
+        "minor": { "type": "integer", "const": 2 }
+      },
+      "required": ["major", "minor"],
+      "additionalProperties": false,
+      "description": "AST schema version. Renderers must reject assets with an unexpected major version."
+    },
+    "meta": {
+      "description": "Parsed YAML frontmatter as a JSON object. null/absent when the document has no frontmatter.",
+      "oneOf": [
+        { "type": "object" },
+        { "type": "null" }
+      ]
+    },
+    "ast": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/BlockNode" },
+      "description": "Ordered list of top-level block nodes representing the document body."
+    }
+  },
+  "required": ["schema", "ast"],
+  "additionalProperties": false
+}

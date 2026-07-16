@@ -9,44 +9,25 @@ This document covers how to use `markplus_core` in all three modes:
 
 ## 1. CLI (`mpc`)
 
-`mpc` is a minimal single-command tool that reads a Markdown file and writes
-the MarkPlus AST JSON to stdout. Renderers and post-processors pipe from it.
-
-### Build
-
-```bash
-cargo build --release
-# Binary: target/release/mpc
-```
-
-### Usage
-
-```text
-mpc [--pretty] <file.md>
-mpc --help
-```
-
-| Flag | Description |
-|---|---|
-| `--pretty` / `-p` | Pretty-print JSON (default: compact) |
-| `--help` / `-h` | Show help |
+`mpc` (provided by the `markplus` crate) is the main command-line interface. 
+It provides a `core` subcommand that reads a Markdown file and writes the MarkPlus AST JSON to stdout.
 
 ### Examples
 
 ```bash
 # Emit compact JSON
-mpc note.md > note.json
+mpc core note.md > note.json
 
 # Emit pretty JSON for inspection
-mpc --pretty note.md | head -40
+mpc core --pretty note.md | head -40
 
 # Pipe into a renderer
-mpc note.md | my-html-renderer > note.html
+mpc core note.md | my-html-renderer > note.html
 
 # Use in a deploy script
 for f in docs/*.md; do
   stem="${f%.md}"
-  mpc "$f" > "${stem}.json"
+  mpc core "$f" > "${stem}.json"
 done
 ```
 
@@ -195,14 +176,15 @@ Import in JavaScript / TypeScript:
 
 ```js
 import init, {
-  parse_to_ast,
-  parse_document_to_json
+  get_ast,
+  get_frontmatter,
+  get_document_json
 } from './pkg/markplus_core.js';
 
 await init();
 ```
 
-### `parse_to_ast(body: string) → string`
+### `get_ast(body: string) → string`
 
 Parse a plain Markdown body (no frontmatter) and return the AST array as
 compact JSON.
@@ -216,24 +198,27 @@ const site = await fetch('/static_api/note.json').then(r => r.json());
 document.title = site.meta.title;
 
 // 3. Parse body → AST and render
-const ast = JSON.parse(parse_to_ast(site.body));
+const ast = JSON.parse(get_ast(site.body));
 renderHtml(ast);
 ```
 
 > **Note:** `site.body` would be a `body` field you store alongside the AST,
 > or you can re-parse from the `ast` directly in a renderer that accepts AST.
 
-### `parse_document_to_json(rawMd: string) → string`
+### `get_frontmatter(rawMd: string) → string`
+
+Extracts and returns the raw YAML frontmatter string (or empty string if none).
+
+### `get_document_json(rawMd: string) → string`
 
 Parse a raw Markdown string (may include frontmatter) and return the full
-`SiteAsset` JSON. In wasm, the `meta` field is always `null` because
-`serde_yml` is not compiled into the wasm binary — use the native deploy pass
-to produce the full `note.json` with parsed metadata.
+`SiteAsset` JSON. The frontmatter is now correctly parsed and extracted in Wasm.
 
 ```js
 // Useful for in-browser live preview of raw markdown
-const site = JSON.parse(parse_document_to_json(rawMarkdownText));
+const site = JSON.parse(get_document_json(rawMarkdownText));
 // site.ast is ready to pass to a renderer
+// site.meta contains the parsed frontmatter JSON
 ```
 
 ---
@@ -249,8 +234,9 @@ markplus_core  (this crate)
     ├── parse_document()          → SiteAsset { schema, meta, ast }
     ├── parse_body()              → Vec<Value>
     ├── strip_frontmatter()       → &str
-    └── [wasm] parse_to_ast()
-        [wasm] parse_document_to_json()
+    └── [wasm] get_ast()
+        [wasm] get_document_json()
+        [wasm] get_frontmatter()
 
 markplus_render  (separate crate — see markplus-render/docs/usage.md)
 │

@@ -25,11 +25,11 @@ use std::path::Path;
 use markplus_core::parse_document;
 use serde_json::Value;
 
-/// Load and compile the v1 schema once for all tests in this file.
+/// Load and compile the v1.2 schema once for all tests in this file.
 fn load_schema() -> Value {
     let schema_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("schema")
-        .join("markplus-ast.v1.1.schema.json");
+        .join("markplus-ast.v1.2.schema.json");
     let raw = fs::read_to_string(&schema_path)
         .unwrap_or_else(|e| panic!("Cannot read schema at {:?}: {}", schema_path, e));
     serde_json::from_str(&raw).unwrap_or_else(|e| panic!("Schema is not valid JSON: {}", e))
@@ -111,6 +111,40 @@ fn sample_200kb_validates() {
     assert_valid(&schema, &value, "md_sample_file_200KB.md");
 }
 
+/// `md_directives_sample.md` — exercises all `:::name` / `:::/name` block directive
+/// patterns: bare close, named close, attrs, nesting, mixed content, fenced-guard.
+#[test]
+fn sample_directives_validates() {
+    let schema = load_schema();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/md_directives_sample.md");
+    let value = parse_to_value(&path);
+    assert_valid(&schema, &value, "md_directives_sample.md");
+}
+
+/// `md_inline_extensions_sample.md` — exercises inline widgets `:[text]{name k=v}`,
+/// optional link attributes `[text](url){k=v}`, optional image attributes
+/// `![alt](src){k=v}`, invalid widget forms, and soft-break-spanning widgets.
+#[test]
+fn sample_inline_extensions_validates() {
+    let schema = load_schema();
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/md_inline_extensions_sample.md");
+    let value = parse_to_value(&path);
+    assert_valid(&schema, &value, "md_inline_extensions_sample.md");
+}
+
+/// `md_frontmatter_types_sample.md` — exercises all YAML scalar and collection
+/// types in frontmatter: strings, quoted strings, booleans, integers, floats,
+/// date strings, block lists, flow lists, and nested objects.
+#[test]
+fn sample_frontmatter_types_validates() {
+    let schema = load_schema();
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/samples/md_frontmatter_types_sample.md");
+    let value = parse_to_value(&path);
+    assert_valid(&schema, &value, "md_frontmatter_types_sample.md");
+}
+
 // ---------------------------------------------------------------------------
 // Full-feature synthetic document
 // ---------------------------------------------------------------------------
@@ -156,6 +190,19 @@ print("hello")
 graph TD; A --> B
 ```
 
+:::note
+Directive body with a paragraph.
+:::
+
+:::tabs
+:::tab title=One
+First tab.
+:::
+:::tab title=Two
+Second tab.
+:::
+:::/tabs
+
 ![img](src.png){width=100}
 
 Some :[widget]{tooltip text="hi"} inline.
@@ -184,9 +231,9 @@ $$
 // Schema-level invariant tests
 // ---------------------------------------------------------------------------
 
-/// Schema version in `SiteAsset` must be { major: 1, minor: 1 }.
+/// Schema version in `SiteAsset` must be { major: 1, minor: 2 }.
 #[test]
-fn site_asset_schema_field_is_1_1() {
+fn site_asset_schema_field_is_1_2() {
     let asset = parse_document("# Hi").unwrap();
     let value: Value = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
     assert_eq!(
@@ -194,8 +241,8 @@ fn site_asset_schema_field_is_1_1() {
         "schema major field must equal 1"
     );
     assert_eq!(
-        value["schema"]["minor"], 1,
-        "schema minor field must equal 1"
+        value["schema"]["minor"], 2,
+        "schema minor field must equal 2"
     );
 }
 

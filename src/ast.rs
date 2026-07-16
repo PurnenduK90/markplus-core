@@ -28,6 +28,8 @@ use pulldown_cmark::{Alignment, BlockQuoteKind, CodeBlockKind, Event, HeadingLev
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
+use crate::event_filter::{DirectiveTable, RichEvent};
+
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
@@ -39,8 +41,8 @@ use std::collections::HashMap;
 /// Fenced code blocks (any info string) become `"fenced"` nodes — the
 /// renderer is responsible for deciding whether `name` means syntax-
 /// highlight, diagram, or plugin.
-pub fn build_ast(events: Vec<(Event<'_>, std::ops::Range<usize>)>) -> Vec<Value> {
-    AstBuilder::new(events).build()
+pub fn build_ast(rich_events: Vec<RichEvent<'_>>, directives: DirectiveTable) -> Vec<Value> {
+    AstBuilder::new(rich_events, directives).build()
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +86,8 @@ impl Frame {
 /// frame, finalises the node, and either pushes it onto the parent frame's
 /// inline list or directly onto the top-level block list.
 struct AstBuilder<'a> {
-    events: std::vec::IntoIter<(Event<'a>, std::ops::Range<usize>)>,
+    events: std::vec::IntoIter<RichEvent<'a>>,
+    directives: DirectiveTable,
     /// Block-level output collected so far.
     blocks: Vec<Value>,
     /// Stack of open block frames. The last entry is the innermost open tag.
@@ -100,9 +103,10 @@ struct AstBuilder<'a> {
 }
 
 impl<'a> AstBuilder<'a> {
-    fn new(events: Vec<(Event<'a>, std::ops::Range<usize>)>) -> Self {
+    fn new(events: Vec<RichEvent<'a>>, directives: DirectiveTable) -> Self {
         Self {
             events: events.into_iter(),
+            directives,
             blocks: Vec::new(),
             stack: Vec::new(),
             in_table_head: false,
@@ -113,73 +117,104 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn build(mut self) -> Vec<Value> {
-        while let Some((event, range)) = self.events.next() {
-            self.handle(event, range);
+        while let Some(event) = self.events.next() {
+            self.handle(event);
         }
-        self.blocks
+        merge_directives(self.blocks, self.directives)
     }
 
-    fn handle(&mut self, event: Event<'_>, range: std::ops::Range<usize>) {
-        match event {
-            // ── Block open tags ───────────────────────────────────────────
-            Event::Start(tag) => self.open(tag, range),
-
-            // ── Block close tags ──────────────────────────────────────────
-            Event::End(end) => self.close(end),
-
-            // ── Leaf events (no paired End) ───────────────────────────────
-            Event::Rule => self.push_block(json!({"t": "hr", "range": [range.start, range.end]})),
-
-            Event::TaskListMarker(checked) => {
-                self.push_inline(json!({"t": "task_marker", "checked": checked, "range": [range.start, range.end]}));
+    fn handle(&mut self, rich_event: RichEvent<'_>) {
+        match rich_event {
+            RichEvent::Widget {
+                name,
+                text,
+                attrs,
+                range,
+            } => {
+                let mut node_attrs = Map::new();
+                for (k, v) in attrs {
+                    node_attrs.insert(k, v);
+                }
+                self.push_inline(json!({
+                    "t": "widget",
+                    "name": name,
+                    "text": text,
+                    "attrs": node_attrs,
+                    "range": [range.start, range.end]
+                }));
             }
-
-            Event::Text(t) => {
-                let s = t.as_ref();
-                // Scan the text for inline widgets :[text]{name k=v ...}
-                // and emit multiple inline nodes if needed.
-                for node in scan_inline_widgets(s, range.start) {
-                    self.push_inline(node);
+            RichEvent::LinkImageAttrs(attrs) => {
+                if let Some(f) = self.stack.last_mut() {
+                    let mut node_attrs = match f.node.get("attrs") {
+                        Some(Value::Object(existing)) => existing.clone(),
+                        _ => Map::new(),
+                    };
+                    for (k, v) in attrs {
+                        node_attrs.insert(k, v);
+                    }
+                    f.node.insert("attrs".into(), Value::Object(node_attrs));
                 }
             }
+            RichEvent::Cmark(event, range) => match event {
+                // ── Block open tags ───────────────────────────────────────────
+                Event::Start(tag) => self.open(tag, range),
 
-            Event::Code(t) => {
-                self.push_inline(json!({"t": "code_span", "text": t.as_ref(), "range": [range.start, range.end]}));
-            }
+                // ── Block close tags ──────────────────────────────────────────
+                Event::End(end) => self.close(end),
 
-            Event::InlineMath(t) => {
-                self.push_inline(json!({"t": "math_inline", "src": t.as_ref(), "range": [range.start, range.end]}));
-            }
+                // ── Leaf events (no paired End) ───────────────────────────────
+                Event::Rule => {
+                    self.push_block(json!({"t": "hr", "range": [range.start, range.end]}))
+                }
 
-            Event::DisplayMath(t) => {
-                // Display math appears at block level (between paragraphs)
-                self.push_block(json!({"t": "math_block", "src": t.as_ref(), "range": [range.start, range.end]}));
-            }
+                Event::TaskListMarker(checked) => {
+                    self.push_inline(json!({"t": "task_marker", "checked": checked, "range": [range.start, range.end]}));
+                }
 
-            Event::Html(t) | Event::InlineHtml(t) => {
-                let s = t.as_ref();
-                if self.stack.is_empty() {
-                    self.push_block(
-                        json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
-                    );
-                } else {
+                Event::Text(t) => {
                     self.push_inline(
-                        json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
+                        json!({"t": "text", "text": t.as_ref(), "range": [range.start, range.end]}),
                     );
                 }
-            }
 
-            Event::FootnoteReference(label) => {
-                self.push_inline(json!({"t": "footnote_ref", "label": label.as_ref(), "range": [range.start, range.end]}));
-            }
+                Event::Code(t) => {
+                    self.push_inline(json!({"t": "code_span", "text": t.as_ref(), "range": [range.start, range.end]}));
+                }
 
-            Event::SoftBreak => {
-                self.push_inline(json!({"t": "soft_break", "range": [range.start, range.end]}));
-            }
+                Event::InlineMath(t) => {
+                    self.push_inline(json!({"t": "math_inline", "src": t.as_ref(), "range": [range.start, range.end]}));
+                }
 
-            Event::HardBreak => {
-                self.push_inline(json!({"t": "hard_break", "range": [range.start, range.end]}));
-            }
+                Event::DisplayMath(t) => {
+                    // Display math appears at block level (between paragraphs)
+                    self.push_block(json!({"t": "math_block", "src": t.as_ref(), "range": [range.start, range.end]}));
+                }
+
+                Event::Html(t) | Event::InlineHtml(t) => {
+                    let s = t.as_ref();
+                    if self.stack.is_empty() {
+                        self.push_block(
+                            json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
+                        );
+                    } else {
+                        self.push_inline(
+                            json!({"t": "raw_html", "html": s, "range": [range.start, range.end]}),
+                        );
+                    }
+                }
+
+                Event::FootnoteReference(label) => {
+                    self.push_inline(json!({"t": "footnote_ref", "label": label.as_ref(), "range": [range.start, range.end]}));
+                }
+
+                Event::SoftBreak => {
+                    self.push_inline(json!({"t": "soft_break", "range": [range.start, range.end]}));
+                }
+
+                Event::HardBreak => {
+                    self.push_inline(json!({"t": "hard_break", "range": [range.start, range.end]}));
+                }
+            },
         }
     }
 
@@ -351,7 +386,7 @@ impl<'a> AstBuilder<'a> {
             | TagEnd::Item
             | TagEnd::FootnoteDefinition => {
                 if let Some(mut f) = self.stack.pop() {
-                    let children = coalesce_and_scan_widgets(f.inline.drain(..).collect());
+                    let children: Vec<Value> = f.inline.drain(..).collect();
                     f.node.insert("children".into(), Value::Array(children));
                     let node = Value::Object(f.node);
                     self.flush_block(node);
@@ -542,220 +577,42 @@ fn col_align(a: Alignment) -> &'static str {
 /// The **first** whitespace-separated token is the name (e.g. the language
 /// or plugin identifier). The remaining tokens are attributes.
 pub fn parse_fence_info(info: &str) -> (String, HashMap<String, Value>) {
-    let tokens = tokenize_attrs(info);
-    let mut iter = tokens.into_iter();
-    let name = iter.next().unwrap_or_default();
-    let mut attrs = HashMap::new();
-    for token in iter {
-        if let Some((k, v)) = token.split_once('=') {
-            attrs.insert(k.to_owned(), json!(v));
-        } else {
-            attrs.insert(token, json!(true));
-        }
-    }
-    (name, attrs)
-}
-
-/// Parse an attribute block string where **all** tokens are `key=value` or
-/// bare flags — there is no leading name token.
-///
-/// Used for `[link](url){key=value ...}` and `![img](src){key=value ...}`.
-fn parse_attr_block(s: &str) -> HashMap<String, Value> {
-    let mut attrs = HashMap::new();
-    for token in tokenize_attrs(s) {
-        if let Some((k, v)) = token.split_once('=') {
-            attrs.insert(k.to_owned(), json!(v));
-        } else {
-            attrs.insert(token, json!(true));
-        }
-    }
-    attrs
-}
-
-/// Tokenize a space-separated attribute string, respecting `"quoted values"`.
-fn tokenize_attrs(s: &str) -> Vec<String> {
-    let mut tokens: Vec<String> = Vec::new();
-    let mut current = String::new();
-    let mut in_quote = false;
-
-    for ch in s.chars() {
-        match ch {
-            '"' => {
-                in_quote = !in_quote;
-            }
-            ' ' | '\t' if !in_quote => {
-                if !current.is_empty() {
-                    tokens.push(std::mem::take(&mut current));
-                }
-            }
-            _ => current.push(ch),
-        }
-    }
-    if !current.is_empty() {
-        tokens.push(current);
-    }
-    tokens
-}
-
-/// Try to parse an inline widget shortcode: `:[text]{name key=value ...}`
-///
-/// Returns `None` if the string does not match the pattern at position 0.
-fn parse_inline_widget(s: &str) -> Option<(Value, usize)> {
-    let rest = s.strip_prefix(":[")?;
-    let bracket_end = rest.find("]{")?;
-    let text = &rest[..bracket_end];
-    let after = &rest[bracket_end + 2..];
-    let brace_end = after.find('}')?;
-    let attrs_str = &after[..brace_end];
-    let (name, attrs) = parse_fence_info(attrs_str);
-    if name.is_empty() {
-        return None;
-    }
-    let consumed = 2 + bracket_end + 2 + brace_end + 1; // :[  ]{ attrs }
-    Some((
-        json!({
-            "t": "widget",
-            "name": name,
-            "text": text,
-            "attrs": attrs
-        }),
-        consumed,
-    ))
-}
-
-/// Scan a text string for zero or more inline widgets, emitting plain text
-/// nodes for surrounding content and widget nodes for each match.
-fn scan_inline_widgets(s: &str, mut start_offset: usize) -> Vec<Value> {
-    let mut result = Vec::new();
-    let mut remaining = s;
-
-    while !remaining.is_empty() {
-        if let Some(pos) = remaining.find(":[") {
-            // Emit text before the widget
-            if pos > 0 {
-                let chunk_len = remaining[..pos].len();
-                result.push(json!({"t": "text", "text": &remaining[..pos], "range": [start_offset, start_offset + chunk_len]}));
-                start_offset += chunk_len;
-            }
-            let candidate = &remaining[pos..];
-            if let Some((mut widget, consumed)) = parse_inline_widget(candidate) {
-                if let Value::Object(ref mut map) = widget {
-                    map.insert(
-                        "range".into(),
-                        json!([start_offset, start_offset + consumed]),
-                    );
-                }
-                result.push(widget);
-                remaining = &remaining[pos + consumed..];
-                start_offset += consumed;
-            } else {
-                // Not a valid widget — emit the `:[` literally and advance past it
-                let chunk_len = remaining[..pos + 2].len();
-                result.push(json!({"t": "text", "text": &remaining[..pos + 2], "range": [start_offset, start_offset + chunk_len]}));
-                remaining = &remaining[pos + 2..];
-                start_offset += chunk_len;
-            }
-        } else {
-            let chunk_len = remaining.len();
-            result.push(json!({"t": "text", "text": remaining, "range": [start_offset, start_offset + chunk_len]}));
-            break;
-        }
-    }
-
-    result
-}
-
-/// Merge consecutive plain-text children in an inline list, scan the merged
-/// buffer for widgets, absorb trailing `{attrs}` into preceding link/image
-/// nodes, and return the expanded result.
-///
-/// Non-text nodes (em, strong, links, etc.) are kept in place as boundaries
-/// unless immediately followed by an attr block.
-fn coalesce_and_scan_widgets(children: Vec<Value>) -> Vec<Value> {
-    // Pass 1: coalesce consecutive text nodes and scan for widgets.
-    let mut pass1: Vec<Value> = Vec::new();
-    let mut text_buf = String::new();
-    let mut current_offset: Option<usize> = None;
-
-    let flush_text = |buf: &mut String, offset: Option<usize>, out: &mut Vec<Value>| {
-        if !buf.is_empty() {
-            for node in scan_inline_widgets(buf, offset.unwrap_or(0)) {
-                out.push(node);
-            }
-            buf.clear();
-        }
+    let info = info.trim();
+    let (name, mut rest) = match info.split_once(char::is_whitespace) {
+        Some((n, r)) => (n, r.trim()),
+        None => (info, ""),
     };
 
-    for child in children {
-        match child.get("t").and_then(|v| v.as_str()) {
-            Some("text") => {
-                if let Some(s) = child.get("text").and_then(|v| v.as_str()) {
-                    current_offset = current_offset.or_else(|| {
-                        child
-                            .get("range")
-                            .and_then(|v| v.as_array())
-                            .and_then(|arr| arr.first())
-                            .and_then(|v| v.as_u64())
-                            .map(|n| n as usize)
-                    });
-                    text_buf.push_str(s);
-                }
-            }
-            _ => {
-                flush_text(&mut text_buf, current_offset, &mut pass1);
-                current_offset = None;
-                pass1.push(child);
-            }
-        }
-    }
-    flush_text(&mut text_buf, current_offset, &mut pass1);
-
-    // Pass 2: absorb trailing `{...}` text nodes into preceding link/image.
-    let mut result: Vec<Value> = Vec::new();
-    let mut iter = pass1.into_iter().peekable();
-
-    while let Some(mut node) = iter.next() {
-        let t = node
-            .get("t")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_owned();
-        if matches!(t.as_str(), "link" | "image") {
-            // Clone the peeked value to release the borrow before calling next().
-            let maybe_attrs: Option<(String, String)> = iter.peek().and_then(|next| {
-                let text = next.get("text")?.as_str()?;
-                let attrs_block = text.strip_prefix('{')?;
-                let end = attrs_block.find('}')?;
-                Some((
-                    attrs_block[..end].to_owned(),
-                    attrs_block[end + 1..].to_owned(),
-                ))
-            });
-
-            if let Some((attrs_str, remainder)) = maybe_attrs {
-                let attrs = parse_attr_block(&attrs_str);
-                if !attrs.is_empty() {
-                    // Absorb attrs into the link/image node.
-                    if let Value::Object(ref mut m) = node {
-                        let existing = m.get("attrs").cloned();
-                        let mut merged = match existing {
-                            Some(Value::Object(e)) => e,
-                            _ => serde_json::Map::new(),
-                        };
-                        merged.extend(attrs);
-                        m.insert("attrs".into(), Value::Object(merged));
-                    }
-                    iter.next(); // consume the text node — borrow is now dropped
-                    if !remainder.trim().is_empty() {
-                        result.push(node);
-                        result.push(json!({"t": "text", "text": remainder})); // Note: range is lost for this synthetic text fragment, acceptable for inline attr trailing
-                        continue;
-                    }
-                }
-            }
-        }
-        result.push(node);
+    if rest.starts_with('{') && rest.ends_with('}') {
+        rest = rest[1..rest.len() - 1].trim();
     }
 
-    result
+    let tokens = crate::event_filter::tokenize_attrs(rest);
+    let mut attrs = HashMap::new();
+    for token in tokens {
+        if let Some((k, v)) = token.split_once('=') {
+            attrs.insert(k.to_owned(), json!(v));
+        } else {
+            attrs.insert(token, json!(true));
+        }
+    }
+    (name.to_owned(), attrs)
+}
+
+fn merge_directives(mut blocks: Vec<Value>, directives: DirectiveTable) -> Vec<Value> {
+    for (start_byte, node) in directives {
+        let idx = blocks
+            .iter()
+            .position(|b| {
+                if let Some(arr) = b.get("range").and_then(|v| v.as_array())
+                    && let Some(start) = arr.first().and_then(|v| v.as_u64())
+                {
+                    return start as usize >= start_byte;
+                }
+                false
+            })
+            .unwrap_or(blocks.len());
+        blocks.insert(idx, node);
+    }
+    blocks
 }
