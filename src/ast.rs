@@ -597,9 +597,10 @@ fn merge_directives(mut blocks: Vec<Value>, directives: DirectiveTable) -> Vec<V
             .iter()
             .position(|b| {
                 if let Some(arr) = b.get("range").and_then(|v| v.as_array())
-                    && let Some(start) = arr.first().and_then(|v| v.as_u64()) {
-                        return start as usize >= start_byte;
-                    }
+                    && let Some(start) = arr.first().and_then(|v| v.as_u64())
+                {
+                    return start as usize >= start_byte;
+                }
                 false
             })
             .unwrap_or(blocks.len());

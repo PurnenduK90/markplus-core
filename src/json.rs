@@ -23,7 +23,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-
 // ---------------------------------------------------------------------------
 // Wire format: note_XXXX.json
 //
@@ -287,7 +286,7 @@ mod tests {
     #[test]
     fn parse_frontmatter_some() {
         let raw = "title: hello\ndate: 2026-06-07\n";
-        let meta = crate::frontmatter::parse_yaml_frontmatter(Some(raw)).expect("parse failed");
+        let meta = crate::yaml::parse_yaml_frontmatter(Some(raw)).expect("parse failed");
         assert!(meta.is_some());
         let m = meta.unwrap();
         assert_eq!(m["title"], "hello");
@@ -295,14 +294,14 @@ mod tests {
 
     #[test]
     fn parse_frontmatter_none() {
-        let meta = crate::frontmatter::parse_yaml_frontmatter(None).expect("parse failed");
+        let meta = crate::yaml::parse_yaml_frontmatter(None).expect("parse failed");
         assert!(meta.is_none());
     }
 
     #[test]
     fn parse_frontmatter_invalid_yaml_errors() {
         let bad = "- item\n";
-        let err = crate::frontmatter::parse_yaml_frontmatter(Some(bad));
+        let err = crate::yaml::parse_yaml_frontmatter(Some(bad));
         assert!(matches!(err, Err(CompileError::InvalidFrontmatter(_))));
     }
 

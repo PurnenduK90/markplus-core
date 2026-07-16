@@ -22,9 +22,9 @@ target.
 |---|---|
 | **Platform sovereign** | Compiles to native (Tauri, CLI) and WebAssembly (browser/PWA) from one codebase |
 | **Versioned AST** | JSON output carries a `schema` version so renderers can detect incompatible shapes |
-| **Frontmatter** | YAML frontmatter extracted and serialised to JSON; stripped body kept separately |
+| **Frontmatter** | YAML frontmatter extracted and serialised to JSON (works natively and on Wasm) |
 | **All pulldown-cmark extensions** | Tables, footnotes, strikethrough, task lists, math, GFM alerts, definition lists, superscript/subscript |
-| **Data File Parsers** | Parse `.csv` and `.json` directly into Markdown Table/Definition List AST nodes |
+| **Data File Parsers** | Parse `.csv`, `.json`, and `.yaml` directly into Markdown Table/Definition List AST nodes |
 | **Media File Parsers** | Parse Source Code and Mermaid (`.mmd`) files into Fenced Code Block AST nodes |
 | **Fenced block attrs** | `` ```python execute=true linenos `` → `{ "name": "python", "attrs": {...} }` |
 | **Extended links/images** | `[text](url){key=value}` and `![alt](src){width=480}` |
@@ -43,13 +43,12 @@ markplus_core/
 │   └── ast-reference.md  ← Markdown → AST node reference
 └── src/
     ├── lib.rs            ← Public API (native + Wasm exports)
-    ├── main.rs           ← mpc CLI (single-command AST emitter)
     ├── config.rs         ← Parser options / FrontmatterMode
     ├── event_filter.rs   ← Frontmatter stripper, passes events through
     ├── ast.rs            ← Stack-based AST builder
-    ├── json.rs           ← SiteAsset wire format & validation
+    ├── yaml.rs           ← YAML file parser (and frontmatter engine)
+    ├── json.rs           ← SiteAsset wire format & validation / JSON parser
     ├── csv.rs            ← CSV file parser
-    ├── json_data.rs      ← JSON data file parser
     ├── code.rs           ← Source code file parser
     └── mermaid.rs        ← Mermaid file parser
 ```
@@ -61,19 +60,13 @@ markplus_core/
 ### Build
 
 ```bash
-cargo build --release        # native lib + mpc CLI
+cargo build --release        # native lib
 wasm-pack build --target web # WebAssembly package → pkg/
 ```
 
 ### CLI
 
-```bash
-# Emit compact AST JSON
-mpc note.md
-
-# Emit pretty-printed AST JSON
-mpc --pretty note.md
-```
+The command-line interface for `markplus_core` is provided by the `markplus` crate (the `mpc` command). See the [MarkPlus OSS repository](https://github.com/PurnenduK90/markplus) for CLI usage.
 
 ### Rust library
 
@@ -91,14 +84,17 @@ let ast = parse_body(body_str);
 ### WebAssembly (JavaScript)
 
 ```js
-import init, { parse_to_ast, parse_document_to_json } from './pkg/markplus_core.js';
+import init, { get_ast, get_frontmatter, get_document_json } from './pkg/markplus_core.js';
 await init();
 
 // Plain markdown body → AST array JSON string
-const ast = JSON.parse(parse_to_ast(markdownBody));
+const ast = JSON.parse(get_ast(markdownBody));
 
-// Raw markdown (frontmatter ignored in wasm) → full SiteAsset JSON string
-const site = JSON.parse(parse_document_to_json(rawMarkdown));
+// Extract raw YAML frontmatter string
+const yaml = get_frontmatter(rawMarkdown);
+
+// Raw markdown (with frontmatter) → full SiteAsset JSON string (including parsed meta!)
+const site = JSON.parse(get_document_json(rawMarkdown));
 ```
 
 ---
@@ -138,7 +134,7 @@ first — then the core, then the renderers.
 ```bash
 # Python (jsonschema)
 pip install jsonschema
-mpc note.md | python -c "
+mpc core note.md | python -c "
 import sys, json
 from jsonschema import validate
 ast = json.loads(sys.stdin.read())

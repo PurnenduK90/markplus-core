@@ -161,3 +161,19 @@ fn parse_scalar(s: &str) -> Value {
         Value::String(s.to_string())
     }
 }
+
+/// Parse a YAML string and return a JSON Value.
+pub fn parse_yaml_str(yaml_text: &str) -> Result<Value, String> {
+    match parse_yaml_frontmatter(Some(yaml_text)) {
+        Ok(Some(v)) => Ok(v),
+        Ok(None) => Ok(Value::Null),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Read a YAML file and return a JSON Value.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_yaml_file(path: &std::path::Path) -> Result<Value, String> {
+    let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    parse_yaml_str(&s)
+}

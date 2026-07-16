@@ -69,21 +69,20 @@ pub fn frontmatter_prepass(raw: &str) -> (String, Option<String>) {
         frontmatter.push('\n');
     }
 
-    if found_end
-        && let Some(end_idx) = raw[4..].find("\n---") {
-            let actual_end = 4 + end_idx + 4;
-            let actual_end = if raw[actual_end..].starts_with('\n') {
-                actual_end + 1
-            } else {
-                actual_end
-            };
-            let actual_end = if raw[actual_end..].starts_with('\r') {
-                actual_end + 1
-            } else {
-                actual_end
-            };
-            return (raw[actual_end..].to_string(), Some(frontmatter));
-        }
+    if found_end && let Some(end_idx) = raw[4..].find("\n---") {
+        let actual_end = 4 + end_idx + 4;
+        let actual_end = if raw[actual_end..].starts_with('\n') {
+            actual_end + 1
+        } else {
+            actual_end
+        };
+        let actual_end = if raw[actual_end..].starts_with('\r') {
+            actual_end + 1
+        } else {
+            actual_end
+        };
+        return (raw[actual_end..].to_string(), Some(frontmatter));
+    }
 
     (raw.to_string(), None)
 }
@@ -201,10 +200,7 @@ pub fn directive_prepass(src: &str) -> (String, DirectiveTable) {
 }
 
 pub fn parse<'a>(raw: &'a str) -> Vec<(Event<'a>, Range<usize>)> {
-    let parser = Parser::new_ext(
-        raw,
-        parser_options(crate::config::FrontmatterMode::Disabled),
-    );
+    let parser = Parser::new_ext(raw, parser_options());
     parser.into_offset_iter().collect()
 }
 
@@ -291,23 +287,25 @@ pub fn transform_events<'a>(events: Vec<(Event<'a>, Range<usize>)>) -> Vec<RichE
             if let Some(RichEvent::Cmark(Event::Text(t), text_range)) = iter.peek() {
                 let s = t.as_ref();
                 if s.starts_with('{')
-                    && let Some(end) = s.find('}') {
-                        extracted = Some((
-                            s[1..end].to_string(),
-                            s[end + 1..].to_string(),
-                            text_range.start + end + 1,
-                            text_range.end,
-                        ));
-                    }
+                    && let Some(end) = s.find('}')
+                {
+                    extracted = Some((
+                        s[1..end].to_string(),
+                        s[end + 1..].to_string(),
+                        text_range.start + end + 1,
+                        text_range.end,
+                    ));
+                }
             }
 
             if let Some((attrs_str, remainder, remainder_start, remainder_end)) = extracted {
                 let attrs = parse_attr_block(&attrs_str);
 
                 if let Some(idx) = start_idx
-                    && !attrs.is_empty() {
-                        result.insert(idx + 1, RichEvent::LinkImageAttrs(attrs));
-                    }
+                    && !attrs.is_empty()
+                {
+                    result.insert(idx + 1, RichEvent::LinkImageAttrs(attrs));
+                }
 
                 iter.next(); // Consume the text event
 
@@ -338,7 +336,7 @@ pub fn tokenize_attrs(s: &str) -> Vec<String> {
             '"' => {
                 in_quote = !in_quote;
             }
-            ' ' | '\t' if !in_quote => {
+            ' ' | '\t' | '\n' | '\r' if !in_quote => {
                 if !current.is_empty() {
                     tokens.push(std::mem::take(&mut current));
                 }

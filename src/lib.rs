@@ -44,7 +44,7 @@ pub mod config;
 /// CSV parsing logic converting flat csv lines into table AST nodes.
 pub mod csv;
 pub mod event_filter;
-pub mod frontmatter;
+pub mod yaml;
 pub mod json;
 #[cfg(not(target_arch = "wasm32"))]
 /// Mermaid logic converting .mmd definitions to SVG renderable fenced nodes.
@@ -111,7 +111,7 @@ pub fn parse_document(raw_md: &str) -> Result<SiteAsset, CompileError> {
     let events = event_filter::parse(&masked);
     let rich = event_filter::transform_events(events);
     let ast = ast::build_ast(rich, directives);
-    let meta = crate::frontmatter::parse_yaml_frontmatter(frontmatter_str.as_deref())?;
+    let meta = crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref())?;
     Ok(SiteAsset::new(meta, ast))
 }
 
@@ -159,41 +159,39 @@ pub fn strip_frontmatter(raw: &str) -> &str {
     raw
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Wasm API
 // ---------------------------------------------------------------------------
 
-/// Parse a Markdown body string (no frontmatter) and return the AST as a
-/// compact JSON string.
-///
-/// **JS usage:**
-/// ```js
-/// const ast = JSON.parse(parse_to_ast(markdownString));
-/// ```
+/// Returns the AST as a JSON string (body only, no frontmatter).
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-pub fn parse_to_ast(body: String) -> String {
-    let ast = parse_body(&body);
-    serde_json::to_string(&ast).unwrap_or_else(|_| "[]".into())
+pub fn get_ast(body: String) -> String {
+    parse_to_ast(body)
 }
 
-/// Parse a raw `.md` string (may include frontmatter) and return the full
-/// [`SiteAsset`] JSON (schema + meta + ast).
-///
-/// Note: on wasm targets frontmatter YAML is accepted but the `meta` field
-/// will always be `null` because `serde_yml` is not available in wasm.
-/// For full frontmatter support use the native `parse_document` API.
+/// Returns the raw frontmatter YAML string (or "" if none).
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-pub fn parse_document_to_json(raw_md: String) -> String {
-    use config::FrontmatterMode;
+pub fn get_frontmatter(raw_md: String) -> String {
+    let (_, raw_yaml) = event_filter::frontmatter_prepass(&raw_md);
+    raw_yaml.unwrap_or_default()
+}
+
+/// Returns the full SiteAsset JSON: { schema, meta, ast }
+/// meta is a parsed JSON object on both native and wasm.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn get_document_json(raw_md: String) -> String {
     let (body, frontmatter_str) = event_filter::frontmatter_prepass(&raw_md);
     let (masked, directives) = event_filter::directive_prepass(&body);
     let events = event_filter::parse(&masked);
     let rich = event_filter::transform_events(events);
     let ast = ast::build_ast(rich, directives);
     let meta =
-        crate::frontmatter::parse_yaml_frontmatter(frontmatter_str.as_deref()).unwrap_or(None);
+        crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref()).unwrap_or(None);
     let asset = SiteAsset::new(meta, ast);
     asset.to_json().unwrap_or_else(|_| "{}".into())
 }
@@ -337,7 +335,10 @@ $$
     #[test]
     fn invalid_frontmatter_returns_error() {
         let md = "---\n- list item\n---\n# Body\n";
-        assert!(matches!(parse_document(md), Err(CompileError::InvalidFrontmatter(_))));
+        assert!(matches!(
+            parse_document(md),
+            Err(CompileError::InvalidFrontmatter(_))
+        ));
     }
 
     #[test]
@@ -599,8 +600,6 @@ $$
         assert_eq!(find_child(para, "hard_break")["t"], "hard_break");
     }
 
-
-
     #[test]
     fn site_asset_schema_version_is_1_2() {
         assert_eq!(SiteAsset::SCHEMA_MAJOR, 1);
@@ -612,6 +611,137 @@ $$
         let asset = parse_document(FULL_DOC).unwrap();
         let round_trip: SiteAsset = serde_json::from_str(&asset.to_json().unwrap()).unwrap();
         assert_eq!(round_trip, asset);
+    }
+
+    #[test]
+    fn directive_basic() {
+        let ast = parse_body(":::note\nhello\n:::\n");
+        let dir = &ast[0];
+        assert_eq!(dir["t"], "directive");
+        assert_eq!(dir["name"], "note");
+        assert_eq!(dir["children"][0]["t"], "paragraph");
+        assert_eq!(dir["children"][0]["children"][0]["text"], "hello");
+    }
+
+    #[test]
+    fn directive_with_attrs() {
+        let ast = parse_body(":::callout type=warning\nbody\n:::\n");
+        let dir = &ast[0];
+        assert_eq!(dir["name"], "callout");
+        assert_eq!(dir["attrs"]["type"], "warning");
+    }
+
+    #[test]
+    fn directive_named_close() {
+        let ast = parse_body(":::tabs\nA\n:::/tabs\n");
+        let dir = &ast[0];
+        assert_eq!(dir["name"], "tabs");
+        assert_eq!(dir["children"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn directive_bare_close() {
+        let ast = parse_body(":::tabs\nA\n:::\n");
+        let dir = &ast[0];
+        assert_eq!(dir["name"], "tabs");
+        assert_eq!(dir["children"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn directive_nested() {
+        let ast = parse_body(":::columns\n:::col\nA\n:::\n:::\n");
+        let outer = &ast[0];
+        assert_eq!(outer["name"], "columns");
+        let inner = &outer["children"][0];
+        assert_eq!(inner["name"], "col");
+    }
+
+    #[test]
+    fn directive_fenced_guard() {
+        let ast = parse_body("```\n:::fake\n```\n");
+        let fenced = &ast[0];
+        assert_eq!(fenced["t"], "fenced");
+        assert!(fenced["raw"].as_str().unwrap().contains(":::fake"));
+    }
+
+    #[test]
+    fn directive_ranges_correct() {
+        let ast = parse_body("A\n\n:::note\nB\n:::\n\nC\n");
+        assert_eq!(ast.len(), 3);
+        assert_eq!(ast[0]["t"], "paragraph");
+        assert_eq!(ast[1]["t"], "directive");
+        assert_eq!(ast[2]["t"], "paragraph");
+    }
+
+    #[test]
+    fn directive_mixed_content() {
+        let ast = parse_body("# Head\n\n:::note\nA\n:::\n\nPara\n");
+        assert_eq!(ast[0]["t"], "heading");
+        assert_eq!(ast[1]["t"], "directive");
+        assert_eq!(ast[2]["t"], "paragraph");
+    }
+
+    #[test]
+    fn frontmatter_block_list() {
+        let asset = parse_document("---\ntags:\n  - a\n  - b\n---\nhi").unwrap();
+        assert_eq!(asset.meta.unwrap()["tags"], json!(["a", "b"]));
+    }
+
+    #[test]
+    fn frontmatter_nested_object() {
+        let asset = parse_document("---\nauthor:\n  name: x\n---\nhi").unwrap();
+        assert_eq!(asset.meta.unwrap()["author"]["name"], "x");
+    }
+
+    #[test]
+    fn frontmatter_flow_list() {
+        let asset = parse_document("---\ntags: [a, b]\n---\nhi").unwrap();
+        assert_eq!(asset.meta.unwrap()["tags"], json!(["a", "b"]));
+    }
+
+    #[test]
+    fn frontmatter_bool() {
+        let asset = parse_document("---\ndraft: true\n---\nhi").unwrap();
+        assert_eq!(asset.meta.unwrap()["draft"], true);
+    }
+
+    #[test]
+    fn frontmatter_int() {
+        let asset = parse_document("---\nweight: 5\n---\nhi").unwrap();
+        assert_eq!(asset.meta.unwrap()["weight"], 5);
+    }
+
+    #[test]
+    fn frontmatter_quoted_string() {
+        let asset = parse_document("---\ntitle: \"hello: world\"\n---\nhi").unwrap();
+        assert_eq!(asset.meta.unwrap()["title"], "hello: world");
+    }
+
+    #[test]
+    fn widget_across_softbreak() {
+        let ast = parse_body(":[LO]{tooltip\ntext=hi}\n");
+        let para = &ast[0];
+        let widget = &para["children"][0];
+        assert_eq!(widget["t"], "widget");
+        assert_eq!(widget["name"], "tooltip");
+    }
+
+    #[test]
+    fn link_attrs_remainder() {
+        let ast = parse_body("[text](url){key=val} more\n");
+        let para = &ast[0];
+        let children = para["children"].as_array().unwrap();
+        assert_eq!(children[0]["t"], "link");
+        assert_eq!(children[0]["attrs"]["key"], "val");
+        assert_eq!(children[1]["text"], " more");
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn get_ast_returns_json_array() {
+        let json_str = crate::get_ast("hi".into());
+        let val: Value = serde_json::from_str(&json_str).unwrap();
+        assert!(val.is_array());
     }
 
     // -----------------------------------------------------------------------

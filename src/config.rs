@@ -20,18 +20,9 @@
 
 use pulldown_cmark::Options;
 
-/// Whether the source document may contain YAML frontmatter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrontmatterMode {
-    /// Parse and extract YAML frontmatter (native/deploy pass).
-    Enabled,
-    /// Skip frontmatter parsing — caller provides pre-stripped body.
-    Disabled,
-}
-
 /// Build the pulldown-cmark option set.
-/// All stable extensions enabled; YAML frontmatter is gated on `mode`.
-pub fn parser_options(mode: FrontmatterMode) -> Options {
+/// All stable extensions enabled; YAML frontmatter is handled by a pre-pass.
+pub fn parser_options() -> Options {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_FOOTNOTES);
@@ -43,8 +34,6 @@ pub fn parser_options(mode: FrontmatterMode) -> Options {
     opts.insert(Options::ENABLE_DEFINITION_LIST);
     opts.insert(Options::ENABLE_SUPERSCRIPT);
     opts.insert(Options::ENABLE_SUBSCRIPT);
-    if matches!(mode, FrontmatterMode::Enabled) {
-        opts.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
-    }
+
     opts
 }
