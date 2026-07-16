@@ -167,7 +167,8 @@ pub fn strip_frontmatter(raw: &str) -> &str {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn get_ast(body: String) -> String {
-    parse_to_ast(body)
+    let ast = parse_body(&body);
+    serde_json::to_string(&ast).unwrap_or_else(|_| "[]".into())
 }
 
 /// Returns the raw frontmatter YAML string (or "" if none).
