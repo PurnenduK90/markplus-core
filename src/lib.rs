@@ -189,7 +189,8 @@ pub fn get_document_json(raw_md: String) -> Result<String, String> {
     let events = event_filter::parse(&masked);
     let rich = event_filter::transform_events(events);
     let ast = ast::build_ast(rich, directives);
-    let meta = crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref()).map_err(|e| e.to_string())?;
+    let meta = crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref())
+        .map_err(|e| e.to_string())?;
     let asset = SiteAsset::new(meta, ast);
     asset.to_json().map_err(|e| e.to_string())
 }
