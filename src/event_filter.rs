@@ -136,7 +136,9 @@ pub fn directive_prepass(src: &str) -> (String, DirectiveTable) {
                     "children": inner_ast,
                     "range": [frame.start_byte, offset + line_len]
                 });
-                directives.push((frame.start_byte, node));
+                if stack.is_empty() {
+                    directives.push((frame.start_byte, node));
+                }
 
                 // Mask the line
                 masked.push_str(&mask_line(line));
@@ -173,6 +175,12 @@ pub fn directive_prepass(src: &str) -> (String, DirectiveTable) {
         }
 
         offset += line_len;
+    }
+
+    if !stack.is_empty() {
+        let first_open = stack[0].start_byte;
+        masked.truncate(first_open);
+        masked.push_str(&src[first_open..]);
     }
 
     (masked, directives)
