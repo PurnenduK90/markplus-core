@@ -577,18 +577,26 @@ fn col_align(a: Alignment) -> &'static str {
 /// The **first** whitespace-separated token is the name (e.g. the language
 /// or plugin identifier). The remaining tokens are attributes.
 pub fn parse_fence_info(info: &str) -> (String, HashMap<String, Value>) {
-    let tokens = crate::event_filter::tokenize_attrs(info);
-    let mut iter = tokens.into_iter();
-    let name = iter.next().unwrap_or_default();
+    let info = info.trim();
+    let (name, mut rest) = match info.split_once(char::is_whitespace) {
+        Some((n, r)) => (n, r.trim()),
+        None => (info, ""),
+    };
+
+    if rest.starts_with('{') && rest.ends_with('}') {
+        rest = rest[1..rest.len() - 1].trim();
+    }
+
+    let tokens = crate::event_filter::tokenize_attrs(rest);
     let mut attrs = HashMap::new();
-    for token in iter {
+    for token in tokens {
         if let Some((k, v)) = token.split_once('=') {
             attrs.insert(k.to_owned(), json!(v));
         } else {
             attrs.insert(token, json!(true));
         }
     }
-    (name, attrs)
+    (name.to_owned(), attrs)
 }
 
 fn merge_directives(mut blocks: Vec<Value>, directives: DirectiveTable) -> Vec<Value> {

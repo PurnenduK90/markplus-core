@@ -33,7 +33,6 @@
         { "$ref": "#/$defs/WidgetNode" },
         { "$ref": "#/$defs/FootnoteRefNode" },
         { "$ref": "#/$defs/TaskMarkerNode" },
-        { "$ref": "#/$defs/SoftBreakNode" },
         { "$ref": "#/$defs/HardBreakNode" },
         { "$ref": "#/$defs/RawHtmlNode" }
       ]
@@ -744,23 +743,6 @@
         }
       },
       "required": ["t", "checked"],
-      "additionalProperties": false
-    },
-
-    "SoftBreakNode": {
-      "description": "A soft line break (single newline without trailing spaces).",
-      "type": "object",
-      "properties": {
-        "t": { "const": "soft_break" },
-        "range": {
-          "type": "array",
-          "items": { "type": "integer" },
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "Byte offsets [start, end] in the source markdown."
-        }
-      },
-      "required": ["t"],
       "additionalProperties": false
     },
 

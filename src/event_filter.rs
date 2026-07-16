@@ -47,41 +47,28 @@ pub enum RichEvent<'a> {
 /// Strips the YAML frontmatter block (if present).
 /// Returns `(body_string, Some(raw_yaml_string))` or `(original_string, None)`.
 pub fn frontmatter_prepass(raw: &str) -> (String, Option<String>) {
-    if !raw.starts_with("---\n") && !raw.starts_with("---\r\n") {
+    let mut offset = if let Some(suffix) = raw.strip_prefix("---\n") {
+        raw.len() - suffix.len()
+    } else if let Some(suffix) = raw.strip_prefix("---\r\n") {
+        raw.len() - suffix.len()
+    } else {
         return (raw.to_string(), None);
-    }
-
-    let mut lines = raw.lines();
-    lines.next(); // skip opening ---
+    };
 
     let mut frontmatter = String::new();
-    let mut _body_start = 0;
-    let mut found_end = false;
 
-    for line in lines {
-        if line == "---" {
-            found_end = true;
-            // +4 for "---\n" or "---\r\n". Just find it in the original string.
-            // Using byte offset is safer.
-            break;
+    while offset < raw.len() {
+        let remaining = &raw[offset..];
+        let line_len = remaining.find('\n').map_or(remaining.len(), |idx| idx + 1);
+        let line = &remaining[..line_len];
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+
+        if trimmed == "---" || trimmed == "..." {
+            return (raw[offset + line_len..].to_string(), Some(frontmatter));
         }
-        frontmatter.push_str(line);
-        frontmatter.push('\n');
-    }
 
-    if found_end && let Some(end_idx) = raw[4..].find("\n---") {
-        let actual_end = 4 + end_idx + 4;
-        let actual_end = if raw[actual_end..].starts_with('\n') {
-            actual_end + 1
-        } else {
-            actual_end
-        };
-        let actual_end = if raw[actual_end..].starts_with('\r') {
-            actual_end + 1
-        } else {
-            actual_end
-        };
-        return (raw[actual_end..].to_string(), Some(frontmatter));
+        frontmatter.push_str(line);
+        offset += line_len;
     }
 
     (raw.to_string(), None)
@@ -152,20 +139,12 @@ pub fn directive_prepass(src: &str) -> (String, DirectiveTable) {
                 directives.push((frame.start_byte, node));
 
                 // Mask the line
-                masked.push_str(&"\n".repeat(line_len));
+                masked.push_str(&mask_line(line));
                 handled = true;
             } else if !is_close {
                 // Open directive
                 let info = rest.trim_end();
-                if !info.is_empty() && !info.contains(char::is_whitespace) {
-                    let (name, attrs) = parse_fence_info(info);
-                    stack.push(DirectiveFrame {
-                        start_byte: offset,
-                        name,
-                        attrs,
-                        body_start: offset + line_len,
-                    });
-                } else if !info.is_empty() {
+                if !info.is_empty() {
                     let (name, attrs) = parse_fence_info(info);
                     if !name.is_empty() {
                         stack.push(DirectiveFrame {
@@ -179,7 +158,7 @@ pub fn directive_prepass(src: &str) -> (String, DirectiveTable) {
 
                 // Mask the line if we are inside or opening a directive
                 if !stack.is_empty() {
-                    masked.push_str(&"\n".repeat(line_len));
+                    masked.push_str(&mask_line(line));
                     handled = true;
                 }
             }
@@ -187,7 +166,7 @@ pub fn directive_prepass(src: &str) -> (String, DirectiveTable) {
 
         if !handled {
             if !stack.is_empty() {
-                masked.push_str(&"\n".repeat(line_len));
+                masked.push_str(&mask_line(line));
             } else {
                 masked.push_str(line);
             }
@@ -197,6 +176,24 @@ pub fn directive_prepass(src: &str) -> (String, DirectiveTable) {
     }
 
     (masked, directives)
+}
+
+fn mask_line(line: &str) -> String {
+    let len = line.len();
+    if len == 0 {
+        return String::new();
+    }
+    let mut s = String::with_capacity(len);
+    if line.ends_with("\r\n") {
+        s.push_str(&" ".repeat(len - 2));
+        s.push_str("\r\n");
+    } else if line.ends_with('\n') {
+        s.push_str(&" ".repeat(len - 1));
+        s.push('\n');
+    } else {
+        s.push_str(&" ".repeat(len));
+    }
+    s
 }
 
 pub fn parse<'a>(raw: &'a str) -> Vec<(Event<'a>, Range<usize>)> {
@@ -336,7 +333,7 @@ pub fn tokenize_attrs(s: &str) -> Vec<String> {
             '"' => {
                 in_quote = !in_quote;
             }
-            ' ' | '\t' | '\n' | '\r' if !in_quote => {
+            ' ' | '\t' | '\n' | '\r' | ',' if !in_quote => {
                 if !current.is_empty() {
                     tokens.push(std::mem::take(&mut current));
                 }

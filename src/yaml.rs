@@ -50,7 +50,7 @@ fn parse_block(
 ) -> Option<Value> {
     let mut map = Map::new();
     let mut list = Vec::new();
-    let mut is_list = false;
+    let mut is_list: Option<bool> = None;
 
     while let Some(&line) = lines.peek() {
         if line.trim().is_empty() {
@@ -63,8 +63,6 @@ fn parse_block(
             break; // End of this block
         }
         if indent > current_indent {
-            // Should not happen for valid well-formed block start, but skip or err?
-            // Usually we consume strictly. Let's just break if it's over-indented unexpectedly.
             break;
         }
 
@@ -72,10 +70,12 @@ fn parse_block(
         let trimmed = line.trim();
 
         if let Some(rest) = trimmed.strip_prefix("- ") {
-            is_list = true;
+            if is_list == Some(false) {
+                return None;
+            }
+            is_list = Some(true);
             let val_str = rest.trim();
             if val_str.is_empty() {
-                // Next line might be nested block
                 if let Some(&next) = lines.peek() {
                     let next_ind = get_indent(next);
                     if next_ind > current_indent {
@@ -90,9 +90,12 @@ fn parse_block(
                 list.push(parse_scalar(val_str));
             }
         } else if let Some((key, val)) = split_key_val(trimmed) {
+            if is_list == Some(true) {
+                return None;
+            }
+            is_list = Some(false);
             let key = key.to_string();
             if val.is_empty() {
-                // Next line might be nested block or list
                 if let Some(&next) = lines.peek() {
                     let next_ind = get_indent(next);
                     if next_ind > current_indent {
@@ -109,15 +112,14 @@ fn parse_block(
                 map.insert(key, parse_scalar(val));
             }
         } else {
-            // Unrecognized line format
             return None;
         }
     }
 
-    if is_list {
-        Some(Value::Array(list))
-    } else {
-        Some(Value::Object(map))
+    match is_list {
+        Some(true) => Some(Value::Array(list)),
+        Some(false) => Some(Value::Object(map)),
+        None => None,
     }
 }
 

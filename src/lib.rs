@@ -183,15 +183,15 @@ pub fn get_frontmatter(raw_md: String) -> String {
 /// meta is a parsed JSON object on both native and wasm.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-pub fn get_document_json(raw_md: String) -> String {
+pub fn get_document_json(raw_md: String) -> Result<String, String> {
     let (body, frontmatter_str) = event_filter::frontmatter_prepass(&raw_md);
     let (masked, directives) = event_filter::directive_prepass(&body);
     let events = event_filter::parse(&masked);
     let rich = event_filter::transform_events(events);
     let ast = ast::build_ast(rich, directives);
-    let meta = crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref()).unwrap_or(None);
+    let meta = crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref()).map_err(|e| e.to_string())?;
     let asset = SiteAsset::new(meta, ast);
-    asset.to_json().unwrap_or_else(|_| "{}".into())
+    asset.to_json().map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
