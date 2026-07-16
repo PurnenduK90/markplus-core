@@ -44,11 +44,11 @@ pub mod config;
 /// CSV parsing logic converting flat csv lines into table AST nodes.
 pub mod csv;
 pub mod event_filter;
-pub mod yaml;
 pub mod json;
 #[cfg(not(target_arch = "wasm32"))]
 /// Mermaid logic converting .mmd definitions to SVG renderable fenced nodes.
 pub mod mermaid;
+pub mod yaml;
 
 use json::SiteAsset;
 use serde_json::Value;
@@ -159,8 +159,6 @@ pub fn strip_frontmatter(raw: &str) -> &str {
     raw
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Wasm API
 // ---------------------------------------------------------------------------
@@ -190,8 +188,7 @@ pub fn get_document_json(raw_md: String) -> String {
     let events = event_filter::parse(&masked);
     let rich = event_filter::transform_events(events);
     let ast = ast::build_ast(rich, directives);
-    let meta =
-        crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref()).unwrap_or(None);
+    let meta = crate::yaml::parse_yaml_frontmatter(frontmatter_str.as_deref()).unwrap_or(None);
     let asset = SiteAsset::new(meta, ast);
     asset.to_json().unwrap_or_else(|_| "{}".into())
 }
