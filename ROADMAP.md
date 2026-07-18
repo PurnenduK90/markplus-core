@@ -42,7 +42,21 @@ This document outlines the current state of `markplus-core`, identifies areas fo
 2. **Medium-term**: Upgrade `yaml.rs` to support multi-line strings, which is a highly requested feature for frontmatter descriptions.
 3. **Long-term**: Design the Extensible Plugin API to replace the current `event_filter` masking hacks.
 
----
+## 4. Architectural Strategy & Monetization
 
-> [!NOTE]
-> **User Review Required**: Please review the priorities above. Should we focus first on the Wasm optimizations, the YAML parser, or the extensible plugin API? Let me know if there are any other features you'd like added to this roadmap!
+### The Workspace Approach (Text vs. Binary)
+- **Current State**: Parsers for JSON, CSV, YAML, Mermaid, and Code are baked directly into `markplus-core`.
+- **Goal**: Transition to a modular Workspace architecture. Lightweight, text-based developer formats (`markplus-json`, `markplus-csv`, `markplus-yaml`) will be split into sub-crates inside the `markplus-core` repository. Heavy, complex formats (PDF, DOCX, XLSX, OCR) will not be supported inside markplus core.
+
+### Wasm Extensibility & Feature Gating
+- **Current State**: Wasm builds include all text parsers, increasing the baseline binary size.
+- **Goal**: Implement aggressive Cargo feature flags (e.g. `features = ["json", "csv"]`). For Wasm, users can compile with `--no-default-features` to generate an ultra-lean, Markdown-only engine, or selectively opt-in to specific text formats. In the long-term, transition to a dynamic Wasm Plugin Architecture where external engines (like `markplus-excel-plugin.wasm`) can be loaded dynamically at runtime without recompiling the core.
+
+### Future Text-Based Formats
+As part of the modular workspace strategy, the following lightweight, pure-text formats are planned for native integration as optional sub-crates:
+- **TOML (`.toml`)**: Standard configuration format, crucial for frontmatter and SSG metadata.
+- **BibTeX (`.bib`) / CSL-JSON**: For academic citations and bibliography generation.
+- **PlantUML (`.puml`) & Graphviz (`.dot`)**: Text-to-diagram engines (complementing Mermaid).
+- **LaTeX (`.tex`) & Typst (`.typ`)**: Injecting standalone mathematical or typesetting equation files directly into the AST.
+- **INI / dotenv (`.env`)**: Simple key-value parsers for global template variable injection.
+*(Note: Markdown file inclusion (`:::include{file="header.md"}`) will strictly be handled by the higher-level `markplus` facade crate, keeping `markplus-core` completely decoupled from file system I/O).*
